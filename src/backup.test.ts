@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 import { zipSync, strToU8 } from "fflate";
 import { newNote } from "./model";
-import { makeBackup, readBackup } from "./backup";
+import { makeBackup, readBackup, readBackupBundle } from "./backup";
 it("round trips notes, remaps IDs and preserves original PDF bytes", () => {
   const a = newNote("テスト");
   a.pdf = strToU8("%PDF-original");
@@ -26,4 +26,20 @@ it("rejects unknown versions, broken archives and invalid geometry", () => {
   const n = newNote();
   n.pages[0].width = -1;
   expect(() => readBackup(makeBackup([n]))).toThrow();
+});
+it("preserves folders including empty folders and reads old backups", () => {
+  const n = { ...newNote("分類ノート"), folder: "勉強" };
+  const bundle = readBackupBundle(makeBackup([n], ["勉強", "空フォルダー"]));
+  expect(bundle.folders).toEqual(["勉強", "空フォルダー"]);
+  expect(bundle.notes[0].folder).toBe("勉強");
+  const legacy = zipSync({
+    "manifest.json": strToU8(
+      JSON.stringify({
+        format: "mpp-notes",
+        version: 1,
+        notes: [newNote("旧版")],
+      }),
+    ),
+  });
+  expect(readBackupBundle(legacy).folders).toEqual([]);
 });

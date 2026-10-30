@@ -1,12 +1,13 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import { uid, type Note, type Page, type Stroke } from "./model";
 const MAX_BYTES = 250 * 1024 * 1024;
-export function makeBackup(notes: Note[]) {
+export function makeBackup(notes: Note[], folders: string[] = []) {
   const files: Record<string, Uint8Array> = {};
   files["manifest.json"] = strToU8(
     JSON.stringify({
       format: "mpp-notes",
       version: 1,
+      folders,
       notes: notes.map(({ pdf, ...n }) => ({
         ...n,
         pdfFile: pdf ? `pdf/${n.id}.pdf` : undefined,
@@ -48,7 +49,10 @@ function validPage(p: Page) {
       (Number.isInteger(p.pdfIndex) && p.pdfIndex >= 0))
   );
 }
-export function readBackup(data: Uint8Array): Note[] {
+export function readBackupBundle(data: Uint8Array): {
+  notes: Note[];
+  folders: string[];
+} {
   try {
     if (data.length > MAX_BYTES) throw Error();
     let total = 0;
@@ -67,8 +71,12 @@ export function readBackup(data: Uint8Array): Note[] {
       m.notes.length > 2000
     )
       throw Error();
-    return m.notes.map((n: Note & { pdfFile?: string }) => {
+    const notes: Note[] = m.notes.map((n: Note & { pdfFile?: string }) => {
       if (
+        (n.folder !== undefined &&
+          (typeof n.folder !== "string" ||
+            n.folder.length > 100 ||
+            n.folder === "*")) ||
         typeof n.title !== "string" ||
         n.title.length > 300 ||
         !Array.isArray(n.pages) ||
@@ -83,6 +91,7 @@ export function readBackup(data: Uint8Array): Note[] {
       return {
         id: uid(),
         title: n.title,
+        folder: n.folder,
         updated: Date.now(),
         pages: n.pages.map((p) => ({
           ...p,
@@ -92,6 +101,25 @@ export function readBackup(data: Uint8Array): Note[] {
         ...(pdf ? { pdf } : {}),
       };
     });
+    if (
+      m.folders !== undefined &&
+      (!Array.isArray(m.folders) ||
+        m.folders.length > 2000 ||
+        m.folders.some(
+          (f: unknown) =>
+            typeof f !== "string" || !f.trim() || f.length > 100 || f === "*",
+        ))
+    )
+      throw Error();
+    return {
+      notes,
+      folders: [
+        ...new Set<string>([
+          ...(m.folders || []),
+          ...notes.flatMap((n) => (n.folder ? [n.folder] : [])),
+        ]),
+      ],
+    };
   } catch {
     throw new Error(
       "バックアップが無効、未対応の形式、またはサイズ上限（250 MB）を超えています。",
@@ -107,3 +135,5 @@ export function download(bytes: Uint8Array, name: string, type: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+
+export const readBackup = (data: Uint8Array) => readBackupBundle(data).notes;

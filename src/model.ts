@@ -16,6 +16,7 @@ export type Page = {
   pdfIndex?: number;
 };
 export type Note = {
+  folder?: string;
   id: string;
   title: string;
   updated: number;

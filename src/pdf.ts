@@ -93,7 +93,11 @@ export async function exportPDF(note: Note) {
         : out.addPage([p.width, p.height]);
     if (original && p.pdfIndex !== undefined) out.addPage(pdfPage);
     const canvas = document.createElement("canvas");
-    const scale = Math.min(2, 4096 / Math.max(p.width, p.height));
+    const scale = Math.min(
+      4,
+      8192 / Math.max(p.width, p.height),
+      Math.sqrt(24_000_000 / (p.width * p.height)),
+    );
     canvas.width = Math.ceil(p.width * scale);
     canvas.height = Math.ceil(p.height * scale);
     const ctx = canvas.getContext("2d")!;

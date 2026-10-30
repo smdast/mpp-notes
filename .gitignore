@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.local
 public/pdfjs/
+public/icon-*.png

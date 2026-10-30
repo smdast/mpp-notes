@@ -2,10 +2,14 @@ import type { Note } from "./model";
 const DB = "mpp-notes-v1";
 export async function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 1);
+    const r = indexedDB.open(DB, 2);
     r.onupgradeneeded = () => {
-      r.result.createObjectStore("notes", { keyPath: "id" });
-      r.result.createObjectStore("pdfs");
+      if (!r.result.objectStoreNames.contains("notes"))
+        r.result.createObjectStore("notes", { keyPath: "id" });
+      if (!r.result.objectStoreNames.contains("pdfs"))
+        r.result.createObjectStore("pdfs");
+      if (!r.result.objectStoreNames.contains("settings"))
+        r.result.createObjectStore("settings");
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -68,22 +72,37 @@ export async function deleteNote(id: string) {
   tx.objectStore("pdfs").delete(id);
   await completion(db, tx);
 }
-export async function saveMany(notes: Note[]) {
+export async function saveMany(notes: Note[], folders?: string[]) {
   const db = await openDB();
-  const tx = db.transaction(["notes", "pdfs"], "readwrite");
+  const tx = db.transaction(["notes", "pdfs", "settings"], "readwrite");
   notes.forEach((n) => put(tx, n, true));
+  if (folders) tx.objectStore("settings").put(folders, "folders");
   await completion(db, tx);
 }
-export async function saveSnapshot(notes: Note[]) {
+export async function saveSnapshot(notes: Note[], folders?: string[]) {
   const db = await openDB();
-  const tx = db.transaction(["notes", "pdfs"], "readwrite");
+  const tx = db.transaction(["notes", "pdfs", "settings"], "readwrite");
   tx.objectStore("notes").clear();
   tx.objectStore("pdfs").clear();
   notes.forEach((n) => put(tx, n));
+  if (folders) tx.objectStore("settings").put(folders, "folders");
   await completion(db, tx);
 }
 export function storageMessage(e: unknown) {
   return e instanceof DOMException && e.name === "QuotaExceededError"
     ? "端末の保存容量が不足しています。バックアップを書き出してから不要なノートを削除してください。"
     : "端末への保存に失敗しました。バックアップを書き出し、空き容量やブラウザーの保存設定を確認してください。";
+}
+export async function loadFolders(): Promise<string[]> {
+  const db = await openDB();
+  const tx = db.transaction("settings", "readonly");
+  const r = tx.objectStore("settings").get("folders");
+  await completion(db, tx);
+  return Array.isArray(r.result) ? r.result : [];
+}
+export async function saveFolders(folders: string[]) {
+  const db = await openDB();
+  const tx = db.transaction("settings", "readwrite");
+  tx.objectStore("settings").put(folders, "folders");
+  await completion(db, tx);
 }

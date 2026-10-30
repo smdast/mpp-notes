@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
+  Lasso,
   Plus,
   FileUp,
   Download,
@@ -41,16 +42,21 @@ import {
 } from "./model";
 import {
   loadNotes,
+  loadFolders,
+  saveFolders,
   saveNote,
   saveMany,
   saveSnapshot,
   deleteNote,
   storageMessage,
 } from "./storage";
-import { makeBackup, readBackup, download } from "./backup";
+import { makeBackup, readBackupBundle, download } from "./backup";
 import { importPDF, exportPDF } from "./pdf";
 import { Sheet, type Tool } from "./Sheet";
 import "./style.css";
+import { FolderNav } from "./FolderNav";
+import { PWAControls } from "./PWAControls";
+import type { EraserMode } from "./editing";
 type Dialog = {
   kind: "new" | "rename" | "deleteNote" | "deletePage" | "help";
   value?: string;
@@ -73,6 +79,10 @@ function App() {
     [dialog, setDialog] = useState<Dialog | null>(null),
     [menu, setMenu] = useState(false),
     [historyRevision, setHistoryRevision] = useState(0);
+  const [folders, setFolders] = useState<string[]>([]),
+    [folder, setFolder] = useState("*");
+  const [eraserMode, setEraserMode] = useState<EraserMode>("stroke"),
+    [eraserSize, setEraserSize] = useState(24);
   const histories = useRef(new Map<string, History>()),
     queue = useRef(Promise.resolve()),
     pending = useRef(0),
@@ -110,7 +120,16 @@ function App() {
     let release: () => void = () => {};
     const init = async () => {
       try {
-        const found = await loadNotes();
+        const [found, storedFolders] = await Promise.all([
+          loadNotes(),
+          loadFolders(),
+        ]);
+        setFolders([
+          ...new Set([
+            ...storedFolders,
+            ...found.flatMap((n) => (n.folder ? [n.folder] : [])),
+          ]),
+        ]);
         if (!alive) return;
         if (found.length) {
           setNotes(found.sort((a, b) => b.updated - a.updated));
@@ -218,6 +237,7 @@ function App() {
           p: "pen",
           h: "marker",
           e: "eraser",
+          l: "lasso",
           v: "hand",
         };
         if (t[e.key.toLowerCase()]) setTool(t[e.key.toLowerCase()]);
@@ -248,6 +268,7 @@ function App() {
     }
   }
   function add(n: Note) {
+    n = { ...n, folder: folder === "*" ? undefined : folder || undefined };
     setNotes((prev) => [n, ...prev]);
     select(n);
     enqueue(() => saveNote(n));
@@ -263,7 +284,9 @@ function App() {
   }
   async function restore(file: File) {
     await run("バックアップを復元中", async () => {
-      const restored = readBackup(new Uint8Array(await file.arrayBuffer()));
+      const bundle = readBackupBundle(new Uint8Array(await file.arrayBuffer()));
+      const restored = bundle.notes;
+      const mergedFolders = [...new Set([...folders, ...bundle.folders])];
       for (const n of restored)
         if (n.pdf) {
           const verified = await importPDF(n.pdf, n.title);
@@ -276,7 +299,9 @@ function App() {
             throw new Error("バックアップのPDFページ情報が無効です。");
         }
       await queue.current;
-      await saveMany(restored);
+      await saveMany(restored, mergedFolders);
+      setFolders(mergedFolders);
+      setFolder("*");
       setNotes((prev) => [...restored, ...prev]);
       if (restored[0]) select(restored[0]);
     });
@@ -313,6 +338,26 @@ function App() {
     [pages[index], pages[pageIndex]] = [pages[pageIndex], pages[index]];
     updateNote({ ...note, pages });
   }
+  function addPage() {
+    if (!note) return;
+    const next = newPage();
+    updateNote({ ...note, pages: [...note.pages, next] });
+    setPageId(next.id);
+  }
+  function storeFolders(next: string[]) {
+    setFolders(next);
+    enqueue(() => saveFolders(next));
+  }
+  function changeFolder(from: string, to?: string) {
+    const next = folders.flatMap((f) => (f === from ? (to ? [to] : []) : [f]));
+    const changed = notes.map((n) =>
+      n.folder === from ? { ...n, folder: to, updated: Date.now() } : n,
+    );
+    setNotes(changed);
+    setFolders(next);
+    setFolder(to || "");
+    enqueue(() => saveSnapshot(changed, next));
+  }
   const colors = [
     "#243d35",
     "#202b39",
@@ -344,26 +389,40 @@ function App() {
         <div className="section-heading">
           ライブラリ <span>{notes.length}</span>
         </div>
+        <FolderNav
+          folders={folders}
+          notes={notes}
+          selected={folder}
+          onSelect={setFolder}
+          onCreate={(name) => {
+            storeFolders([...folders, name]);
+            setFolder(name);
+          }}
+          onRename={(from, to) => changeFolder(from, to)}
+          onDelete={(name) => changeFolder(name)}
+        />
         <nav className="notebooks" aria-label="ノート一覧">
-          {notes.map((n) => (
-            <button
-              key={n.id}
-              className={"notebook " + (n.id === noteId ? "selected" : "")}
-              onClick={() => select(n)}
-            >
-              <span className={"book-icon " + (n.pdf ? "pdf" : "")}>
-                <BookOpen size={17} />
-              </span>
-              <span className="notebook-text">
-                {n.title}
-                <small>
-                  {n.pdf ? "PDF · " : ""}
-                  {n.pages.length} ページ
-                </small>
-              </span>
-              {n.id === noteId && <span className="active-dot" />}
-            </button>
-          ))}
+          {notes
+            .filter((n) => folder === "*" || (n.folder || "") === folder)
+            .map((n) => (
+              <button
+                key={n.id}
+                className={"notebook " + (n.id === noteId ? "selected" : "")}
+                onClick={() => select(n)}
+              >
+                <span className={"book-icon " + (n.pdf ? "pdf" : "")}>
+                  <BookOpen size={17} />
+                </span>
+                <span className="notebook-text">
+                  {n.title}
+                  <small>
+                    {n.pdf ? "PDF · " : ""}
+                    {n.pages.length} ページ
+                  </small>
+                </span>
+                {n.id === noteId && <span className="active-dot" />}
+              </button>
+            ))}
         </nav>
         <button
           className="import-button"
@@ -373,6 +432,11 @@ function App() {
           <FileUp size={17} />
           PDFを取り込む
         </button>
+        <PWAControls
+          canReload={() =>
+            pending.current === 0 && !failed.current && !writing.current
+          }
+        />
         <div className="sidebar-footer">
           <div>
             <ShieldCheck size={17} />
@@ -386,7 +450,7 @@ function App() {
               onClick={() =>
                 void run("バックアップを作成中", async () =>
                   download(
-                    makeBackup(notes),
+                    makeBackup(notes, folders),
                     `mpp-notes-${new Date().toISOString().slice(0, 10)}.zip`,
                     "application/zip",
                   ),
@@ -421,7 +485,7 @@ function App() {
               )}
             </button>
             <span className="breadcrumb-library">
-              マイノート <ChevronRight size={13} />
+              {note?.folder || "未分類"} <ChevronRight size={13} />
             </span>
             <strong>{note?.title || "ノートをはじめよう"}</strong>
             {note && (
@@ -435,6 +499,28 @@ function App() {
                 </button>
                 {menu && (
                   <div className="dropdown">
+                    <label className="folder-move">
+                      フォルダーへ移動
+                      <select
+                        aria-label="ノートのフォルダー"
+                        value={note.folder || ""}
+                        onChange={(e) => {
+                          updateNote({
+                            ...note,
+                            folder: e.target.value || undefined,
+                          });
+                          setFolder(e.target.value);
+                          setMenu(false);
+                        }}
+                      >
+                        <option value="">未分類</option>
+                        {folders.map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       onClick={() => {
                         setDialog({ kind: "rename", value: note.title });
@@ -498,12 +584,36 @@ function App() {
           </div>
         </header>
         <div className="toolbar">
+          {tool === "eraser" && (
+            <div className="eraser-options">
+              <select
+                aria-label="消しゴムの種類"
+                value={eraserMode}
+                onChange={(e) => setEraserMode(e.target.value as EraserMode)}
+              >
+                <option value="stroke">ストローク消しゴム</option>
+                <option value="area">エリア消しゴム</option>
+              </select>
+              <select
+                aria-label="消しゴムのサイズ"
+                value={eraserSize}
+                onChange={(e) => setEraserSize(Number(e.target.value))}
+              >
+                {[12, 24, 48, 80].map((v) => (
+                  <option key={v} value={v}>
+                    {v} px
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="tool-group">
             {(
               [
                 { id: "pen", label: "ペン (P)", icon: PenLine },
                 { id: "marker", label: "蛍光ペン (H)", icon: Highlighter },
                 { id: "eraser", label: "消しゴム (E)", icon: Eraser },
+                { id: "lasso", label: "なげなわ選択 (L)", icon: Lasso },
                 { id: "hand", label: "移動 (V)", icon: Hand },
               ] as const
             ).map((t) => (
@@ -597,7 +707,7 @@ function App() {
               <button
                 onClick={() => {
                   failed.current = false;
-                  enqueue(() => saveSnapshot(notes));
+                  enqueue(() => saveSnapshot(notes, folders));
                   setError("");
                 }}
               >
@@ -662,16 +772,7 @@ function App() {
               </button>
             </div>
             <section className="desk">
-              <div className="desk-heading">
-                <div>
-                  <span className="eyebrow">YOUR SPACE TO THINK</span>
-                  <h1>{note.title}</h1>
-                  <p>
-                    {note.pdf
-                      ? "資料に、あなたの考えを重ねよう。"
-                      : "小さなひらめきも、ここから。"}
-                  </p>
-                </div>
+              <div className="desk-options">
                 <label className="paper-select">
                   用紙{" "}
                   <select
@@ -708,6 +809,10 @@ function App() {
                 color={color}
                 width={width}
                 mouse={mouse}
+                eraserMode={eraserMode}
+                eraserSize={eraserSize}
+                isLastPage={pageIndex === note.pages.length - 1}
+                onAddPage={addPage}
                 onCommit={commit}
                 onError={setError}
                 onWriting={(v) => {
@@ -922,7 +1027,8 @@ function App() {
                   　指で移動、2本指で拡大縮小。「移動」ツールならマウスでも移動できます。
                 </p>
                 <p>
-                  <b>ツール</b>　P：ペン / H：蛍光ペン / E：線を消す /
+                  <b>ツール</b>　P：ペン / H：蛍光ペン / E：消しゴム /
+                  L：なげなわ /
                   V：移動。Ctrl+Zで元に戻せます。対応端末ではペンの消しゴム側・サイドボタンでも消せます。
                 </p>
                 <p>
@@ -932,6 +1038,22 @@ function App() {
                 <p>
                   <b>PDF</b>　パスワード保護のない100
                   MB以下のPDFを取り込めます。書き出したPDFの手書きは画像になります。編集の続きはこのアプリかZIPバックアップを使ってください。
+                </p>
+                <p>
+                  <b>消す・選ぶ</b>
+                  　消しゴムは線全体とエリア消去を切り替えられます。なげなわで囲んだ線を選び、選択枠の内側をドラッグして移動します。Ctrl+Zで戻せます。
+                </p>
+                <p>
+                  <b>ページを追加</b>
+                  　最終ページの一番下で指を上にスワイプ。「離して新しいページを追加」が出てから指を離すと追加します。
+                </p>
+                <p>
+                  <b>フォルダー</b>
+                  　左側でフォルダーを作成・変更・削除できます。ノート名横の「…」から移動先を選びます。フォルダー削除時もノートは未分類に残ります。
+                </p>
+                <p>
+                  <b>オフライン</b>
+                  　PWAをインストールできます。初回のオフライン準備が完了した後は、通信なしでもノートとPDFを開けます。
                 </p>
                 <p className="help-note">
                   MPPの筆圧・手のひら除外・ボタンの認識は、端末・ドライバー・ブラウザーに依存します。ログイン・通信によるノートの送信はありません。
