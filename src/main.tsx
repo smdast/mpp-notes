@@ -1,0 +1,986 @@
+import { createRoot } from "react-dom/client";
+import { useEffect, useRef, useState } from "react";
+import {
+  BookOpen,
+  Plus,
+  FileUp,
+  Download,
+  Upload,
+  PenLine,
+  Highlighter,
+  Eraser,
+  Hand,
+  Undo2,
+  Redo2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Check,
+  ShieldCheck,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  X,
+  Maximize2,
+  Minus,
+  HelpCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+  LoaderCircle,
+} from "lucide-react";
+import {
+  newNote,
+  newPage,
+  record,
+  travel,
+  type History,
+  type Note,
+  type Page,
+  type Stroke,
+} from "./model";
+import {
+  loadNotes,
+  saveNote,
+  saveMany,
+  saveSnapshot,
+  deleteNote,
+  storageMessage,
+} from "./storage";
+import { makeBackup, readBackup, download } from "./backup";
+import { importPDF, exportPDF } from "./pdf";
+import { Sheet, type Tool } from "./Sheet";
+import "./style.css";
+type Dialog = {
+  kind: "new" | "rename" | "deleteNote" | "deletePage" | "help";
+  value?: string;
+};
+function App() {
+  const [notes, setNotes] = useState<Note[]>([]),
+    [noteId, setNoteId] = useState(""),
+    [pageId, setPageId] = useState(""),
+    [ready, setReady] = useState(false),
+    [blocked, setBlocked] = useState(false);
+  const [tool, setTool] = useState<Tool>("pen"),
+    [color, setColor] = useState("#243d35"),
+    [width, setWidth] = useState(2.5),
+    [zoom, setZoom] = useState(0.7),
+    [mouse, setMouse] = useState(false),
+    [sidebar, setSidebar] = useState(true);
+  const [saveStatus, setSaveStatus] = useState("保存済み"),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(""),
+    [dialog, setDialog] = useState<Dialog | null>(null),
+    [menu, setMenu] = useState(false),
+    [historyRevision, setHistoryRevision] = useState(0);
+  const histories = useRef(new Map<string, History>()),
+    queue = useRef(Promise.resolve()),
+    pending = useRef(0),
+    failed = useRef(false),
+    writing = useRef(false),
+    pdfInput = useRef<HTMLInputElement>(null),
+    backupInput = useRef<HTMLInputElement>(null);
+  const note = notes.find((n) => n.id === noteId),
+    page = note?.pages.find((p) => p.id === pageId) || note?.pages[0],
+    pageIndex = note && page ? note.pages.indexOf(page) : 0;
+  const history = page ? histories.current.get(page.id) : undefined;
+  function enqueue(op: () => Promise<unknown>) {
+    pending.current++;
+    setSaveStatus("保存中…");
+    queue.current = queue.current.then(async () => {
+      try {
+        await op();
+      } catch (e) {
+        failed.current = true;
+        setError(storageMessage(e));
+      } finally {
+        pending.current--;
+        setSaveStatus(
+          failed.current
+            ? "保存失敗"
+            : pending.current
+              ? "保存中…"
+              : "保存済み",
+        );
+      }
+    });
+  }
+  useEffect(() => {
+    let alive = true;
+    let release: () => void = () => {};
+    const init = async () => {
+      try {
+        const found = await loadNotes();
+        if (!alive) return;
+        if (found.length) {
+          setNotes(found.sort((a, b) => b.updated - a.updated));
+          setNoteId(found[0].id);
+          setPageId(found[0].pages[0].id);
+        } else {
+          const first = newNote("はじめのノート");
+          setNotes([first]);
+          setNoteId(first.id);
+          setPageId(first.pages[0].id);
+          enqueue(() => saveNote(first));
+        }
+        setReady(true);
+      } catch (e) {
+        setError(
+          "ノートを読み込めません。ブラウザーの保存設定を確認し、再読み込みしてください。",
+        );
+      }
+    };
+    if (navigator.locks)
+      void navigator.locks.request(
+        "mpp-notes-editor",
+        { ifAvailable: true },
+        async (lock) => {
+          if (!alive) return;
+          if (!lock) {
+            setBlocked(true);
+            return;
+          }
+          await init();
+          await new Promise<void>((r) => {
+            release = r;
+          });
+        },
+      );
+    else void init();
+    return () => {
+      alive = false;
+      release();
+    };
+  }, []);
+  useEffect(() => {
+    const listener = (e: BeforeUnloadEvent) => {
+      if (pending.current || failed.current || writing.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", listener);
+    return () => window.removeEventListener("beforeunload", listener);
+  }, []);
+  function updateNote(next: Note) {
+    next = { ...next, updated: Date.now() };
+    setNotes((prev) => prev.map((n) => (n.id === next.id ? next : n)));
+    enqueue(() => saveNote(next));
+  }
+  function updatePage(next: Page) {
+    if (!note) return;
+    updateNote({
+      ...note,
+      pages: note.pages.map((p) => (p.id === next.id ? next : p)),
+    });
+  }
+  function commit(strokes: Stroke[]) {
+    if (!page || strokes === page.strokes) return;
+    histories.current.set(
+      page.id,
+      record(
+        histories.current.get(page.id) || { past: [], future: [] },
+        page.strokes,
+      ),
+    );
+    setHistoryRevision((v) => v + 1);
+    updatePage({ ...page, strokes });
+  }
+  function undo(redo = false) {
+    if (!page) return;
+    const result = travel(
+      histories.current.get(page.id) || { past: [], future: [] },
+      page.strokes,
+      redo,
+    );
+    histories.current.set(page.id, result.history);
+    setHistoryRevision((v) => v + 1);
+    if (result.strokes !== page.strokes)
+      updatePage({ ...page, strokes: result.strokes });
+  }
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLSelectElement ||
+        dialog ||
+        busy
+      )
+        return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo(e.shiftKey);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        undo(true);
+      } else if (!e.ctrlKey && !e.metaKey) {
+        const t: Record<string, Tool> = {
+          p: "pen",
+          h: "marker",
+          e: "eraser",
+          v: "hand",
+        };
+        if (t[e.key.toLowerCase()]) setTool(t[e.key.toLowerCase()]);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [page, dialog, busy, historyRevision]);
+  function select(n: Note) {
+    setNoteId(n.id);
+    setPageId(n.pages[0].id);
+    setMenu(false);
+  }
+  async function run(label: string, action: () => Promise<void>) {
+    if (busy) return;
+    setBusy(label);
+    setError("");
+    try {
+      await action();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "操作に失敗しました。もう一度お試しください。",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+  function add(n: Note) {
+    setNotes((prev) => [n, ...prev]);
+    select(n);
+    enqueue(() => saveNote(n));
+  }
+  async function pdfFile(file: File) {
+    await run("PDFを取り込み中", async () => {
+      const n = await importPDF(
+        new Uint8Array(await file.arrayBuffer()),
+        file.name.replace(/\.pdf$/i, "").slice(0, 300),
+      );
+      add(n);
+    });
+  }
+  async function restore(file: File) {
+    await run("バックアップを復元中", async () => {
+      const restored = readBackup(new Uint8Array(await file.arrayBuffer()));
+      for (const n of restored)
+        if (n.pdf) {
+          const verified = await importPDF(n.pdf, n.title);
+          if (
+            n.pages.some(
+              (p) =>
+                p.pdfIndex !== undefined && p.pdfIndex >= verified.pages.length,
+            )
+          )
+            throw new Error("バックアップのPDFページ情報が無効です。");
+        }
+      await queue.current;
+      await saveMany(restored);
+      setNotes((prev) => [...restored, ...prev]);
+      if (restored[0]) select(restored[0]);
+    });
+  }
+  function submitDialog() {
+    if (!dialog) return;
+    const title = dialog.value?.trim();
+    if (dialog.kind === "new" && title) add(newNote(title));
+    if (dialog.kind === "rename" && title && note)
+      updateNote({ ...note, title });
+    if (dialog.kind === "deleteNote" && note) {
+      const rest = notes.filter((n) => n.id !== note.id);
+      setNotes(rest);
+      enqueue(() => deleteNote(note.id));
+      if (rest[0]) select(rest[0]);
+      else {
+        setNoteId("");
+        setPageId("");
+      }
+    }
+    if (dialog.kind === "deletePage" && note && page && note.pages.length > 1) {
+      const pages = note.pages.filter((p) => p.id !== page.id);
+      updateNote({ ...note, pages });
+      setPageId(pages[Math.max(0, pageIndex - 1)].id);
+      histories.current.delete(page.id);
+    }
+    setDialog(null);
+  }
+  function movePage(direction: number) {
+    if (!note) return;
+    const index = pageIndex + direction;
+    if (index < 0 || index >= note.pages.length) return;
+    const pages = [...note.pages];
+    [pages[index], pages[pageIndex]] = [pages[pageIndex], pages[index]];
+    updateNote({ ...note, pages });
+  }
+  const colors = [
+    "#243d35",
+    "#202b39",
+    "#376fac",
+    "#bd6263",
+    "#bd8d39",
+    "#8466a5",
+  ];
+  return (
+    <div className={"app " + (!sidebar ? "collapsed" : "")}>
+      <aside className="sidebar">
+        <a className="brand" href="./">
+          <span className="brand-icon">
+            <PenLine size={21} />
+          </span>
+          <span>
+            MPP <strong>Notes</strong>
+            <small>書く、考える。</small>
+          </span>
+        </a>
+        <button
+          className="new-note"
+          disabled={!ready}
+          onClick={() => setDialog({ kind: "new", value: "" })}
+        >
+          <Plus size={18} />
+          新しいノート
+        </button>
+        <div className="section-heading">
+          ライブラリ <span>{notes.length}</span>
+        </div>
+        <nav className="notebooks" aria-label="ノート一覧">
+          {notes.map((n) => (
+            <button
+              key={n.id}
+              className={"notebook " + (n.id === noteId ? "selected" : "")}
+              onClick={() => select(n)}
+            >
+              <span className={"book-icon " + (n.pdf ? "pdf" : "")}>
+                <BookOpen size={17} />
+              </span>
+              <span className="notebook-text">
+                {n.title}
+                <small>
+                  {n.pdf ? "PDF · " : ""}
+                  {n.pages.length} ページ
+                </small>
+              </span>
+              {n.id === noteId && <span className="active-dot" />}
+            </button>
+          ))}
+        </nav>
+        <button
+          className="import-button"
+          disabled={!ready}
+          onClick={() => pdfInput.current?.click()}
+        >
+          <FileUp size={17} />
+          PDFを取り込む
+        </button>
+        <div className="sidebar-footer">
+          <div>
+            <ShieldCheck size={17} />
+            <span>
+              あなたの端末に保存<small>ノートは外部に送信されません</small>
+            </span>
+          </div>
+          <div className="backup-actions">
+            <button
+              disabled={!ready}
+              onClick={() =>
+                void run("バックアップを作成中", async () =>
+                  download(
+                    makeBackup(notes),
+                    `mpp-notes-${new Date().toISOString().slice(0, 10)}.zip`,
+                    "application/zip",
+                  ),
+                )
+              }
+            >
+              <Download size={14} />
+              バックアップ
+            </button>
+            <button
+              disabled={!ready}
+              onClick={() => backupInput.current?.click()}
+            >
+              <Upload size={14} />
+              復元
+            </button>
+          </div>
+        </div>
+      </aside>
+      <main>
+        <header className="topbar">
+          <div className="breadcrumb">
+            <button
+              className="icon-button sidebar-toggle"
+              title={sidebar ? "サイドバーを閉じる" : "サイドバーを開く"}
+              onClick={() => setSidebar(!sidebar)}
+            >
+              {sidebar ? (
+                <PanelLeftClose size={18} />
+              ) : (
+                <PanelLeftOpen size={18} />
+              )}
+            </button>
+            <span className="breadcrumb-library">
+              マイノート <ChevronRight size={13} />
+            </span>
+            <strong>{note?.title || "ノートをはじめよう"}</strong>
+            {note && (
+              <div className="menu-wrap">
+                <button
+                  className="icon-button"
+                  title="ノートの操作"
+                  onClick={() => setMenu(!menu)}
+                >
+                  <MoreHorizontal size={18} />
+                </button>
+                {menu && (
+                  <div className="dropdown">
+                    <button
+                      onClick={() => {
+                        setDialog({ kind: "rename", value: note.title });
+                        setMenu(false);
+                      }}
+                    >
+                      名前を変更
+                    </button>
+                    <button
+                      className="danger"
+                      onClick={() => {
+                        setDialog({ kind: "deleteNote" });
+                        setMenu(false);
+                      }}
+                    >
+                      ノートを削除
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="top-actions">
+            <span
+              className={
+                "save-status " + (saveStatus === "保存失敗" ? "failed" : "")
+              }
+              role="status"
+            >
+              {saveStatus === "保存中…" ? (
+                <LoaderCircle size={13} className="spin" />
+              ) : (
+                <Check size={14} />
+              )}{" "}
+              {saveStatus}
+            </span>
+            <button
+              className="export-button"
+              disabled={!note || !!busy}
+              onClick={() =>
+                note &&
+                void run("PDFを書き出し中", async () =>
+                  download(
+                    await exportPDF(note),
+                    `${note.title.replace(/[\\/:*?"<>|]/g, "_")}.pdf`,
+                    "application/pdf",
+                  ),
+                )
+              }
+            >
+              <Download size={15} />
+              <span>PDF書き出し</span>
+            </button>
+            <button
+              title="使い方"
+              className="icon-button"
+              onClick={() => setDialog({ kind: "help" })}
+            >
+              <HelpCircle size={18} />
+            </button>
+          </div>
+        </header>
+        <div className="toolbar">
+          <div className="tool-group">
+            {(
+              [
+                { id: "pen", label: "ペン (P)", icon: PenLine },
+                { id: "marker", label: "蛍光ペン (H)", icon: Highlighter },
+                { id: "eraser", label: "消しゴム (E)", icon: Eraser },
+                { id: "hand", label: "移動 (V)", icon: Hand },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                title={t.label}
+                aria-label={t.label}
+                aria-pressed={tool === t.id}
+                className={"tool " + (tool === t.id ? "active" : "")}
+                onClick={() => setTool(t.id)}
+              >
+                <t.icon size={19} />
+              </button>
+            ))}
+          </div>
+          <span className="divider" />
+          <div className="colors">
+            {colors.map((c) => (
+              <button
+                key={c}
+                title={`色 ${c}`}
+                aria-pressed={color === c}
+                className={"swatch " + (c === color ? "chosen" : "")}
+                style={{ "--swatch": c } as React.CSSProperties}
+                onClick={() => setColor(c)}
+              />
+            ))}
+            <label className="custom-color" title="色を選ぶ">
+              <Plus size={13} />
+              <input
+                aria-label="カスタム色"
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+              />
+            </label>
+          </div>
+          <span className="divider" />
+          <label className="width-select">
+            <span
+              className="width-dot"
+              style={{
+                width: Math.min(width + 2, 10),
+                height: Math.min(width + 2, 10),
+              }}
+            />
+            <select
+              aria-label="線の太さ"
+              value={width}
+              onChange={(e) => setWidth(Number(e.target.value))}
+            >
+              {[1, 2.5, 4, 6, 10].map((w) => (
+                <option key={w} value={w}>
+                  {w} px
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="divider" />
+          <div className="tool-group">
+            <button
+              className="tool"
+              title="元に戻す (Ctrl+Z)"
+              disabled={!history?.past.length}
+              onClick={() => undo()}
+            >
+              <Undo2 size={18} />
+            </button>
+            <button
+              className="tool"
+              title="やり直し (Ctrl+Shift+Z)"
+              disabled={!history?.future.length}
+              onClick={() => undo(true)}
+            >
+              <Redo2 size={18} />
+            </button>
+          </div>
+          <label className="mouse-toggle">
+            <input
+              type="checkbox"
+              checked={mouse}
+              onChange={(e) => setMouse(e.target.checked)}
+            />
+            <span>{mouse ? "マウスでも描画" : "ペンのみ描画"}</span>
+          </label>
+        </div>
+        {error && (
+          <div className="error-banner" role="alert">
+            <span>{error}</span>
+            {failed.current && (
+              <button
+                onClick={() => {
+                  failed.current = false;
+                  enqueue(() => saveSnapshot(notes));
+                  setError("");
+                }}
+              >
+                再保存
+              </button>
+            )}
+            <button title="メッセージを閉じる" onClick={() => setError("")}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        {ready && page && note ? (
+          <div className="workspace">
+            <div className="page-strip">
+              <span className="page-strip-heading">
+                ページ <small>{note.pages.length}</small>
+              </span>
+              <div className="page-list">
+                {note.pages.map((p, i) => (
+                  <button
+                    key={p.id}
+                    className={
+                      "page-thumb " + (p.id === page.id ? "current" : "")
+                    }
+                    onClick={() => setPageId(p.id)}
+                    aria-label={`ページ ${i + 1}`}
+                    aria-current={p.id === page.id ? "page" : undefined}
+                  >
+                    <span
+                      className={
+                        "mini-paper " +
+                        (p.pdfIndex !== undefined ? "pdf-paper" : p.paper)
+                      }
+                    >
+                      {p.pdfIndex !== undefined ? (
+                        <span>
+                          PDF
+                          <br />
+                          <b>{p.pdfIndex + 1}</b>
+                        </span>
+                      ) : (
+                        <span>{String(i + 1).padStart(2, "0")}</span>
+                      )}
+                      <span className="mini-ink">
+                        {p.strokes.length > 0 ? "〰" : ""}
+                      </span>
+                    </span>
+                    <small>{i + 1}</small>
+                  </button>
+                ))}
+              </div>
+              <button
+                className="add-page"
+                title="ページ追加"
+                onClick={() => {
+                  const p = newPage();
+                  updateNote({ ...note, pages: [...note.pages, p] });
+                  setPageId(p.id);
+                }}
+              >
+                <Plus size={18} />
+              </button>
+            </div>
+            <section className="desk">
+              <div className="desk-heading">
+                <div>
+                  <span className="eyebrow">YOUR SPACE TO THINK</span>
+                  <h1>{note.title}</h1>
+                  <p>
+                    {note.pdf
+                      ? "資料に、あなたの考えを重ねよう。"
+                      : "小さなひらめきも、ここから。"}
+                  </p>
+                </div>
+                <label className="paper-select">
+                  用紙{" "}
+                  <select
+                    aria-label="用紙の種類"
+                    value={page.pdfIndex !== undefined ? "pdf" : page.paper}
+                    disabled={page.pdfIndex !== undefined}
+                    onChange={(e) =>
+                      updatePage({
+                        ...page,
+                        paper: e.target.value as Page["paper"],
+                      })
+                    }
+                  >
+                    {page.pdfIndex !== undefined ? (
+                      <option value="pdf">PDF</option>
+                    ) : (
+                      <>
+                        <option value="blank">白紙</option>
+                        <option value="ruled">罫線</option>
+                        <option value="grid">方眼</option>
+                      </>
+                    )}
+                  </select>
+                  <ChevronDown size={13} />
+                </label>
+              </div>
+              <Sheet
+                key={page.id}
+                page={page}
+                pdf={note.pdf}
+                zoom={zoom}
+                setZoom={setZoom}
+                tool={tool}
+                color={color}
+                width={width}
+                mouse={mouse}
+                onCommit={commit}
+                onError={setError}
+                onWriting={(v) => {
+                  writing.current = v;
+                }}
+              />
+              <div className="floating-zoom">
+                <button
+                  title="縮小"
+                  onClick={() => setZoom(Math.max(0.25, zoom - 0.1))}
+                >
+                  <Minus size={15} />
+                </button>
+                <span>{Math.round(zoom * 100)}%</span>
+                <button
+                  title="拡大"
+                  onClick={() => setZoom(Math.min(2.5, zoom + 0.1))}
+                >
+                  <Plus size={15} />
+                </button>
+                <i />
+                <button
+                  title="幅に合わせる"
+                  onClick={() => {
+                    const el = document.querySelector(".viewport");
+                    if (el)
+                      setZoom(
+                        Math.max(
+                          0.25,
+                          Math.min(2.5, (el.clientWidth - 96) / page.width),
+                        ),
+                      );
+                  }}
+                >
+                  <Maximize2 size={15} />
+                </button>
+              </div>
+              <footer className="statusbar">
+                <span>
+                  <span className="green-dot" />
+                  {mouse ? "ペン・マウス入力" : "MPP / ペン入力"}
+                  <span className="status-hint">指で移動・2本指で拡大縮小</span>
+                </span>
+                <div>
+                  <button
+                    title="ページを前へ移動"
+                    disabled={pageIndex === 0}
+                    onClick={() => movePage(-1)}
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                  <button
+                    title="ページを後ろへ移動"
+                    disabled={pageIndex === note.pages.length - 1}
+                    onClick={() => movePage(1)}
+                  >
+                    <ArrowDown size={14} />
+                  </button>
+                  <button
+                    title="ページ削除"
+                    disabled={note.pages.length === 1}
+                    onClick={() => setDialog({ kind: "deletePage" })}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <i />
+                  <button
+                    title="前のページ"
+                    disabled={pageIndex === 0}
+                    onClick={() => setPageId(note.pages[pageIndex - 1].id)}
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span>
+                    {pageIndex + 1} / {note.pages.length}
+                  </span>
+                  <button
+                    title="次のページ"
+                    disabled={pageIndex === note.pages.length - 1}
+                    onClick={() => setPageId(note.pages[pageIndex + 1].id)}
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              </footer>
+            </section>
+          </div>
+        ) : (
+          <div className="empty">
+            <BookOpen size={48} />
+            <h1>
+              {ready ? "あなたの考えを、最初の一冊に。" : "ノートを読み込み中…"}
+            </h1>
+            {ready && (
+              <button
+                className="new-note"
+                onClick={() => setDialog({ kind: "new", value: "" })}
+              >
+                <Plus size={18} />
+                新しいノート
+              </button>
+            )}
+          </div>
+        )}
+      </main>
+      <input
+        ref={pdfInput}
+        hidden
+        type="file"
+        accept="application/pdf,.pdf"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void pdfFile(f);
+        }}
+      />
+      <input
+        ref={backupInput}
+        hidden
+        type="file"
+        accept="application/zip,.zip"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void restore(f);
+        }}
+      />
+      {busy && (
+        <div className="busy-overlay" role="status">
+          <LoaderCircle className="spin" size={25} />
+          {busy}…
+        </div>
+      )}
+      {blocked && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <BookOpen />
+            <h2>別のタブで開いています</h2>
+            <p>
+              ノートを安全に保存するため、編集は1つのタブで行ってください。ほかのタブを閉じて再読み込みしてください。
+            </p>
+            <button className="primary" onClick={() => location.reload()}>
+              再読み込み
+            </button>
+          </div>
+        </div>
+      )}
+      {dialog && (
+        <div
+          className="modal-backdrop"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setDialog(null);
+          }}
+        >
+          <form
+            className={"modal " + (dialog.kind === "help" ? "help-modal" : "")}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dialog-title"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitDialog();
+            }}
+          >
+            <button
+              type="button"
+              className="modal-close icon-button"
+              title="閉じる"
+              onClick={() => setDialog(null)}
+            >
+              <X size={18} />
+            </button>
+            <span className="modal-symbol">
+              <PenLine size={23} />
+            </span>
+            <h2 id="dialog-title">
+              {
+                {
+                  new: "新しいノート",
+                  rename: "ノートの名前を変更",
+                  deleteNote: "ノートを削除しますか？",
+                  deletePage: "ページを削除しますか？",
+                  help: "MPP Notesの使い方",
+                }[dialog.kind]
+              }
+            </h2>
+            {["new", "rename"].includes(dialog.kind) ? (
+              <>
+                <p>思いついたことを、自由に書き留めましょう。</p>
+                <label className="title-label">
+                  ノート名
+                  <input
+                    autoFocus
+                    required
+                    maxLength={300}
+                    placeholder="例：アイデアのスケッチ"
+                    value={dialog.value || ""}
+                    onChange={(e) =>
+                      setDialog({ ...dialog, value: e.target.value })
+                    }
+                  />
+                </label>
+              </>
+            ) : dialog.kind === "help" ? (
+              <div className="help-content">
+                <p>
+                  <b>書く</b>
+                  　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスの場合は「ペンのみ描画」を切り替えてください。
+                </p>
+                <p>
+                  <b>移動する</b>
+                  　指で移動、2本指で拡大縮小。「移動」ツールならマウスでも移動できます。
+                </p>
+                <p>
+                  <b>ツール</b>　P：ペン / H：蛍光ペン / E：線を消す /
+                  V：移動。Ctrl+Zで元に戻せます。対応端末ではペンの消しゴム側・サイドボタンでも消せます。
+                </p>
+                <p>
+                  <b>保存する</b>
+                  　このブラウザーに自動保存します。ブラウザーデータの削除で消えるため、定期的にZIPバックアップを保存してください。別端末へはZIPを復元して移せます。
+                </p>
+                <p>
+                  <b>PDF</b>　パスワード保護のない100
+                  MB以下のPDFを取り込めます。書き出したPDFの手書きは画像になります。編集の続きはこのアプリかZIPバックアップを使ってください。
+                </p>
+                <p className="help-note">
+                  MPPの筆圧・手のひら除外・ボタンの認識は、端末・ドライバー・ブラウザーに依存します。ログイン・通信によるノートの送信はありません。
+                </p>
+              </div>
+            ) : (
+              <p>
+                この操作は取り消せません。必要な内容は先にバックアップしてください。
+              </p>
+            )}
+            <div className="modal-actions">
+              {dialog.kind === "help" ? (
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => setDialog(null)}
+                >
+                  書きはじめる
+                </button>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setDialog(null)}>
+                    キャンセル
+                  </button>
+                  <button
+                    type="submit"
+                    className={
+                      dialog.kind.startsWith("delete")
+                        ? "danger-button"
+                        : "primary"
+                    }
+                    disabled={
+                      ["new", "rename"].includes(dialog.kind) &&
+                      !dialog.value?.trim()
+                    }
+                  >
+                    {dialog.kind.startsWith("delete")
+                      ? "削除する"
+                      : dialog.kind === "new"
+                        ? "ノートを作成"
+                        : "変更する"}
+                  </button>
+                </>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+createRoot(document.getElementById("root")!).render(<App />);
