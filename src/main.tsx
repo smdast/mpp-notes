@@ -7,18 +7,11 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Cloud,
-  ClipboardPaste,
-  Lasso,
   Plus,
   FileUp,
   Download,
   Upload,
   PenLine,
-  Highlighter,
-  Eraser,
-  Hand,
-  Undo2,
-  Redo2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -38,7 +31,6 @@ import {
 } from "lucide-react";
 import {
   newNote,
-  newPage,
   record,
   travel,
   type History,
@@ -79,6 +71,8 @@ import "./style.css";
 import { FolderNav } from "./FolderNav";
 import { PWAControls } from "./PWAControls";
 import { clampZoom } from "./scrolling";
+import { EditorToolbar } from "./EditorToolbar";
+import { newPageFrom, applyPaperTemplate } from "./paper";
 import type { EraserMode } from "./editing";
 type Dialog = {
   kind: "new" | "rename" | "deleteNote" | "deletePage" | "help";
@@ -92,7 +86,7 @@ function App() {
   const dark = useTheme(preferences.theme);
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
-  const { width, pressure, dotted } = preferences.pens[preferences.activePen];
+  const { width, pressure, dotted, dashed } = preferences.pens[preferences.activePen];
   const [jump, setJump] = useState({ id: "", token: 0 });
 
   const [notes, setNotes] = useState<Note[]>([]),
@@ -216,9 +210,6 @@ function App() {
   }
   function setColor(color: string) {
     setPen({ color, customColor: true });
-  }
-  function setWidth(width: number) {
-    setPen({ width });
   }
   function choosePen(id: PenId) {
     storePreferences({ ...preferencesRef.current, activePen: id });
@@ -515,7 +506,7 @@ function App() {
   }
   function addPage() {
     if (!note) return;
-    const next = newPage();
+    const next = newPageFrom(note.pages.at(-1), dark);
     updateNote({ ...note, pages: [...note.pages, next] });
     goPage(next.id);
   }
@@ -803,189 +794,12 @@ function App() {
                 </button>
               </div>
             </header>
-            <div className="toolbar">
-              {tool === "eraser" && (
-                <div className="eraser-options">
-                  <select
-                    aria-label="消しゴムの種類"
-                    value={eraserMode}
-                    onChange={(e) =>
-                      setEraserMode(e.target.value as EraserMode)
-                    }
-                  >
-                    <option value="stroke">ストローク消しゴム</option>
-                    <option value="area">エリア消しゴム</option>
-                  </select>
-                  <select
-                    aria-label="消しゴムのサイズ"
-                    value={eraserSize}
-                    onChange={(e) => setEraserSize(Number(e.target.value))}
-                  >
-                    {[12, 24, 48, 80].map((v) => (
-                      <option key={v} value={v}>
-                        {v} px
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="tool-group pen-presets">
-                {(["pen1", "pen2", "pen3", "marker"] as PenId[]).map(
-                  (id, i) => (
-                    <button
-                      key={id}
-                      className={
-                        "tool pen-preset " +
-                        ((tool === "pen" || tool === "marker") &&
-                        preferences.activePen === id
-                          ? "active"
-                          : "")
-                      }
-                      aria-label={
-                        id === "marker" ? "蛍光ペン (H)" : `ペン${i + 1}`
-                      }
-                      aria-pressed={
-                        (tool === "pen" || tool === "marker") &&
-                        preferences.activePen === id
-                      }
-                      title={id === "marker" ? "蛍光ペン (H)" : `ペン${i + 1}`}
-                      onClick={() => choosePen(id)}
-                      style={{
-                        color: penColor(preferences.pens[id], id, dark),
-                      }}
-                    >
-                      {id === "marker" ? (
-                        <Highlighter size={19} />
-                      ) : (
-                        <PenLine size={19} />
-                      )}
-                      <small>{id === "marker" ? "" : i + 1}</small>
-                    </button>
-                  ),
-                )}
-              </div>
-              <div className="tool-group">
-                {(
-                  [
-                    { id: "eraser", label: "消しゴム (E)", icon: Eraser },
-                    { id: "lasso", label: "なげなわ選択 (L)", icon: Lasso },
-                    { id: "hand", label: "移動 (V)", icon: Hand },
-                  ] as const
-                ).map((t) => (
-                  <button
-                    key={t.id}
-                    title={t.label}
-                    aria-label={t.label}
-                    aria-pressed={tool === t.id}
-                    className={"tool " + (tool === t.id ? "active" : "")}
-                    onClick={() => setTool(t.id)}
-                  >
-                    <t.icon size={19} />
-                  </button>
-                ))}
-              </div>
-              <span className="divider" />
-              <div className="colors">
-                {colors.map((c) => (
-                  <button
-                    key={c}
-                    title={`色 ${c}`}
-                    aria-pressed={color === c}
-                    className={"swatch " + (c === color ? "chosen" : "")}
-                    style={{ "--swatch": c } as React.CSSProperties}
-                    onClick={() => setColor(c)}
-                  />
-                ))}
-                <label className="custom-color" title="色を選ぶ">
-                  <Plus size={13} />
-                  <input
-                    aria-label="カスタム色"
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                  />
-                </label>
-              </div>
-              <span className="divider" />
-              <label className="width-select">
-                <span
-                  className="width-dot"
-                  style={{
-                    width: Math.min(width + 2, 10),
-                    height: Math.min(width + 2, 10),
-                  }}
-                />
-                <select
-                  aria-label="線の太さ"
-                  value={width}
-                  onChange={(e) => setWidth(Number(e.target.value))}
-                >
-                  {[1, 2.5, 4, 6, 10].map((w) => (
-                    <option key={w} value={w}>
-                      {w} px
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="width-select">
-                <select aria-label="線の種類" value={dotted ? "dotted" : "solid"} onChange={(e) => setPen({dotted:e.target.value === "dotted"})}>
-                  <option value="solid">実線</option><option value="dotted">点線</option>
-                </select>
-              </label>
-              <span className="divider" />
-              <div className="tool-group">
-                <button
-                  className="tool"
-                  title="元に戻す (Ctrl+Z)"
-                  disabled={!history?.past.length}
-                  onClick={() => undo()}
-                >
-                  <Undo2 size={18} />
-                </button>
-                <button
-                  className="tool"
-                  title="やり直し (Ctrl+Shift+Z)"
-                  disabled={!history?.future.length}
-                  onClick={() => undo(true)}
-                >
-                  <Redo2 size={18} />
-                </button>
-              </div>
-              <button className="tool" title="貼り付け (Ctrl+V)" aria-label="貼り付け" onClick={() => window.dispatchEvent(new Event("mpp-paste"))}>
-                <ClipboardPaste size={18}/>
-              </button>
-              <label className="setting-toggle">
-                <input
-                  type="checkbox"
-                  aria-label="筆圧検知"
-                  checked={pressure}
-                  onChange={(e) => setPen({ pressure: e.target.checked })}
-                />
-                筆圧
-              </label>
-              <label className="setting-toggle">
-                <input
-                  type="checkbox"
-                  aria-label="図形補正"
-                  checked={preferences.shapeCorrection}
-                  onChange={(e) =>
-                    storePreferences({
-                      ...preferencesRef.current,
-                      shapeCorrection: e.target.checked,
-                    })
-                  }
-                />
-                図形補正
-              </label>
-              <label className="mouse-toggle">
-                <input
-                  type="checkbox"
-                  checked={mouse}
-                  onChange={(e) => setMouse(e.target.checked)}
-                />
-                <span>{mouse ? "マウスでも描画" : "ペンのみ描画"}</span>
-              </label>
-            </div>
+            <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
+              eraserMode={eraserMode} eraserSize={eraserSize} mouse={mouse}
+              canUndo={!!history?.past.length} canRedo={!!history?.future.length}
+              onUndo={undo} onTool={setTool} onPen={choosePen} onSettings={setPen} onColor={setColor}
+              onEraserMode={setEraserMode} onEraserSize={setEraserSize} onMouse={setMouse}
+              onShapeCorrection={(shapeCorrection) => storePreferences({...preferencesRef.current, shapeCorrection})}/>
             {error && (
               <div className="error-banner" role="alert">
                 <span>{error}</span>
@@ -1039,11 +853,7 @@ function App() {
                   <button
                     className="add-page"
                     title="ページ追加"
-                    onClick={() => {
-                      const p = newPage();
-                      updateNote({ ...note, pages: [...note.pages, p] });
-                      goPage(p.id);
-                    }}
+                    onClick={addPage}
                   >
                     <Plus size={18} />
                   </button>
@@ -1126,6 +936,9 @@ function App() {
                       </select>
                       <ChevronDown size={13} />
                     </label>
+                    <button className="apply-paper" disabled={page.pdfIndex !== undefined}
+                      title="用紙の種類と色を全ページに適用（PDFの背景は保持）"
+                      onClick={() => updateNote({...note, pages: applyPaperTemplate(note.pages, page, dark)})}>全ページに適用</button>
                   </div>
                   <ContinuousNotebook
                     dark={dark}
@@ -1141,6 +954,7 @@ function App() {
                     width={width}
                     pressure={pressure}
                     dotted={!!dotted}
+                    dashed={!!dashed}
                     shapeCorrection={preferences.shapeCorrection}
                     mouse={mouse}
                     eraserMode={eraserMode}

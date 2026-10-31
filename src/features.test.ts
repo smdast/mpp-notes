@@ -41,7 +41,7 @@ it("pen preferences are independent, validated and pressure off yields a constan
   prefs.pens.pen2.width = 6;
   prefs.pens.pen2.pressure = false;
   const restored = readPreferences(prefs);
-  expect(restored.pens.pen1.width).toBe(2.5);
+  expect(restored.pens.pen1.width).toBe(3);
   expect(restored.pens.pen2.width).toBe(6);
   expect(restored.pens.pen2.color).toBe("#ff0000");
   expect(pressureValue(0.1, false)).toBe(pressureValue(1, false));

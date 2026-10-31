@@ -2,6 +2,32 @@ import type { Page, Stroke } from "./model";
 import { isDarkColor, LIGHT_PAPER } from "./paper";
 import { inkImage } from "./images";
 export const PAPER_SPACING = 40;
+export function dashSegments(points: Stroke["points"], dash: number, gap: number): Stroke["points"][] {
+  if (!points.length) return [];
+  const segments: Stroke["points"][] = [];
+  let drawing = true, remaining = Math.max(1, dash), piece = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    const distance = Math.hypot(b.x - a.x, b.y - a.y);
+    let along = 0;
+    while (along < distance) {
+      const step = Math.min(remaining, distance - along);
+      along += step;
+      remaining -= step;
+      const t = along / distance;
+      const p = {x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t, p:a.p+(b.p-a.p)*t};
+      if (drawing) piece.push(p);
+      if (remaining < 1e-8) {
+        if (drawing) segments.push(piece);
+        drawing = !drawing;
+        piece = drawing ? [p] : [];
+        remaining = Math.max(1, drawing ? dash : gap);
+      }
+    }
+  }
+  if (drawing && piece.length) segments.push(piece);
+  return segments;
+}
 // Arc-length sampling keeps dots equally spaced, regardless of input speed.
 export function dotPoints(points: Stroke["points"], spacing: number): Stroke["points"] {
   if (!points.length) return [];
@@ -63,7 +89,7 @@ export function smoothPoints(points: Stroke["points"]): Stroke["points"] {
   }
   return out;
 }
-export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
+export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, presmoothed = false) {
   if (s.image) {
     const image = inkImage(s.image);
     if (!image || s.points.length !== 4) return;
@@ -77,7 +103,12 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
     return;
   }
   if (!s.points.length) return;
-  const points = s.shape ? s.points : smoothPoints(s.points);
+  const points = presmoothed || s.shape ? s.points : smoothPoints(s.points);
+  if (s.dashed) {
+    for (const piece of dashSegments(points, Math.max(4, s.width * 4), Math.max(3, s.width * 3)))
+      drawStroke(ctx, {...s, shape: undefined, dashed: false, dotted: false, points: piece}, true);
+    return;
+  }
   ctx.save();
   ctx.strokeStyle = s.color;
   ctx.fillStyle = s.color;

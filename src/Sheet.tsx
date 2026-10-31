@@ -31,6 +31,7 @@ type Props = {
   pdfDocument?: PDFDocumentProxy;
   pressure: boolean;
   dotted: boolean;
+  dashed: boolean;
   shapeCorrection: boolean;
   onActivate: () => void;
   zoom: number;
@@ -52,6 +53,7 @@ export function Sheet({
   pdfDocument,
   pressure,
   dotted,
+  dashed,
   shapeCorrection,
   onActivate,
   zoom,
@@ -499,6 +501,7 @@ export function Sheet({
         color,
         pressure,
         dotted,
+        dashed,
         width: tool === "marker" ? width * 5 : width,
         points: [p],
       };

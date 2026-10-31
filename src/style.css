@@ -2211,3 +2211,27 @@ main {
 .selection-popup button:hover { background: #eaf0e4; }
 [data-theme="dark"] .selection-popup { background: #213426; color: #d2e5c1; border-color: #4d6941; box-shadow: 0 5px 22px #0005; }
 [data-theme="dark"] .selection-popup button:hover { background: #354a30; }
+/* Keep editing actions anchored while tool-specific controls change. */
+.view-editor .editor-toolbar { display: grid; grid-template-columns: 116px minmax(0,1fr); align-items: start; gap: 12px; padding: 8px 16px; }
+.history-tools { display: flex; gap: 4px; flex-wrap: nowrap; align-self: start; }
+.history-tools .tool { flex-shrink: 0; }
+.toolbar-content { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; min-width: 0; }
+.tool-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; flex-shrink: 0; max-width: 100%; }
+.context-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; flex: 1 1 530px; min-width: 0; }
+.context-controls .colors { flex-shrink: 0; }
+.context-controls.eraser-options { flex: 0 1 auto; order: 0; }
+.size-slider { display: flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 11px; color: #718466; }
+.size-slider input[type="range"] { width: 112px; min-width: 70px; height: 20px; padding: 0; margin: 0; border: 0; background: transparent; accent-color: #4d7a52; cursor: pointer; }
+.size-slider output { width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+.line-styles, .eraser-modes { display: flex; gap: 3px; padding: 3px; border: 1px solid #d8e1d0; border-radius: 8px; }
+.line-styles button { flex-direction: column; gap: 2px; min-width: 49px; padding: 3px 2px; border-radius: 5px; color: #6f8263; }
+.line-styles button span { font-size: 9px; }
+.eraser-modes button { border-radius: 5px; padding: 7px 10px; font-size: 11px; }
+.line-styles button[aria-pressed="true"], .eraser-modes button[aria-pressed="true"] { background: #e5eddf; color: #345d48; box-shadow: inset 0 0 0 1px #ccdabb; }
+.toolbar-content .mouse-toggle { margin-left: 0; }
+.apply-paper { padding: 6px 10px; border: 1px solid #d2ddc8; border-radius: 6px; font-size: 10px; white-space: nowrap; }
+[data-theme="dark"] .size-slider { color: #bfd6ac; }
+[data-theme="dark"] .line-styles, [data-theme="dark"] .eraser-modes, [data-theme="dark"] .apply-paper { border-color: #41583a; }
+[data-theme="dark"] .line-styles button { color: #afc4a2; }
+[data-theme="dark"] .line-styles button[aria-pressed="true"], [data-theme="dark"] .eraser-modes button[aria-pressed="true"] { background: #31472b; color: #d9edc7; box-shadow: inset 0 0 0 1px #547047; }
+@media (max-width:650px) { .view-editor .editor-toolbar { padding: 8px 12px; gap: 10px; } .toolbar-content, .context-controls { gap: 8px 10px; } }

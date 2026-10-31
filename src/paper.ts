@@ -1,7 +1,18 @@
-import type { Page } from "./model";
+import { newPage, type Page } from "./model";
 import type { PenId, PenSettings } from "./preferences";
 export const LIGHT_PAPER = "#fffefa",
   DARK_PAPER = "#1e2822";
+export function newPageFrom(previous: Page | undefined, dark: boolean): Page {
+  const page = newPage();
+  if (!previous) return {...page, paperColor: dark ? DARK_PAPER : LIGHT_PAPER};
+  return {...page, width: previous.width, height: previous.height, paper: previous.paper,
+    paperColor: pagePaperColor(previous, dark)};
+}
+export function applyPaperTemplate(pages: Page[], source: Page, dark: boolean): Page[] {
+  if (source.pdfIndex !== undefined) return pages;
+  const paperColor = pagePaperColor(source, dark);
+  return pages.map((page) => page.pdfIndex !== undefined ? page : {...page, paper: source.paper, paperColor});
+}
 export function isDarkColor(color: string) {
   const rgb = [1, 3, 5]
     .map((i) => parseInt(color.slice(i, i + 2), 16) / 255)

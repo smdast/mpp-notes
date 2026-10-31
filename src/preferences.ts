@@ -1,6 +1,7 @@
 export type PenId = "pen1" | "pen2" | "pen3" | "marker";
 export type Theme = "system" | "light" | "dark";
 export type PenSettings = {
+  dashed?: boolean;
   dotted?: boolean;
   color: string;
   width: number;
@@ -16,8 +17,8 @@ export type Preferences = {
 export const defaultPreferences = (): Preferences => ({
   theme: "system",
   pens: {
-    pen1: { color: "#243d35", width: 2.5, pressure: true },
-    pen2: { color: "#376fac", width: 2.5, pressure: true },
+    pen1: { color: "#243d35", width: 3, pressure: true },
+    pen2: { color: "#376fac", width: 3, pressure: true },
     pen3: { color: "#bd6263", width: 4, pressure: true },
     marker: { color: "#bd8d39", width: 4, pressure: false },
   },
@@ -35,12 +36,14 @@ export function readPreferences(value: unknown): Preferences {
     if (
       p &&
       /^#[\da-f]{6}$/i.test(p.color) &&
-      [1, 2.5, 4, 6, 10].includes(p.width) &&
+      Number.isFinite(p.width) && p.width >= 1 && p.width <= 20 &&
       typeof p.pressure === "boolean"
     )
       base.pens[key] = {
         ...p,
-        dotted: p.dotted === true,
+        width: Math.round(p.width),
+        dashed: p.dashed === true,
+        dotted: p.dotted === true && p.dashed !== true,
         customColor:
           typeof p.customColor === "boolean"
             ? p.customColor
