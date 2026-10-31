@@ -17,12 +17,20 @@ import {
 } from "./editing";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { correctShape } from "./shapes";
-import { SelectionTools } from "./SelectionTools";
 import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
+export type SelectionActions = {
+  pageId: string;
+  count: number;
+  rotate: () => void;
+  flip: () => void;
+  remove: () => void;
+  clear: () => void;
+};
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
   page: Page;
+  onSelectionChange: (value: SelectionActions | null, pageId: string) => void;
   paperColor: string;
   isActive: boolean;
   pdfDocument?: PDFDocumentProxy;
@@ -42,6 +50,7 @@ type Props = {
 };
 export function Sheet({
   page,
+  onSelectionChange,
   paperColor,
   isActive,
   pdfDocument,
@@ -73,7 +82,7 @@ export function Sheet({
     moving = useRef<Point | null>(null),
     original = useRef<Stroke[]>([]);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [, refreshSelection] = useState(0),
+  const [selectionRevision, refreshSelection] = useState(0),
     [editingSelection, setEditingSelection] = useState(false);
   const transform = useRef<{
     kind: "scale" | "rotate";
@@ -112,6 +121,32 @@ export function Sheet({
     refreshSelection((v) => v + 1);
     paint();
   }
+  const selectionHandlers = useRef({
+    applyTransform,
+    removeSelection,
+    clearSelection,
+  });
+  selectionHandlers.current = {
+    applyTransform,
+    removeSelection,
+    clearSelection,
+  };
+  useEffect(() => {
+    const value =
+      isActive && tool === "lasso" && selected.current.size && !editingSelection
+        ? {
+            pageId: page.id,
+            count: selected.current.size,
+            rotate: () =>
+              selectionHandlers.current.applyTransform(1, 1, Math.PI / 2),
+            flip: () => selectionHandlers.current.applyTransform(-1, 1, 0),
+            remove: () => selectionHandlers.current.removeSelection(),
+            clear: () => selectionHandlers.current.clearSelection(),
+          }
+        : null;
+    onSelectionChange(value, page.id);
+  }, [isActive, tool, page.strokes, selectionRevision, editingSelection]);
+  useEffect(() => () => onSelectionChange(null, page.id), []);
   useEffect(() => {
     if (!isActive) clearSelection();
   }, [isActive]);
@@ -466,7 +501,6 @@ export function Sheet({
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
   }
-  const bounds = selectionBounds(working.current, selected.current);
   return (
     <div
       className="sheet"
@@ -503,21 +537,6 @@ export function Sheet({
         className="eraser-cursor"
         style={{ width: eraserSize, height: eraserSize, display: "none" }}
       />
-      {isActive && tool === "lasso" && bounds && !editingSelection && (
-        <SelectionTools
-          count={selected.current.size}
-          left={bounds.left * zoom}
-          top={
-            bounds.top * zoom > 120
-              ? bounds.top * zoom - 110
-              : Math.min(page.height * zoom - 90, bounds.bottom * zoom + 35)
-          }
-          maxWidth={page.width * zoom}
-          onTransform={applyTransform}
-          onDelete={removeSelection}
-          onClear={clearSelection}
-        />
-      )}
       {pdfLoading && <div className="page-loading">PDFを読み込み中…</div>}
     </div>
   );

@@ -2035,55 +2035,6 @@ main {
   gap: 18px;
   flex-wrap: wrap;
 }
-.selection-tools {
-  position: absolute;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-  width: 390px;
-  max-width: calc(100% - 6px);
-  padding: 8px;
-  background: #fffefa;
-  box-shadow: 0 5px 20px #182f2430;
-  border: 1px solid #a8be9b;
-  border-radius: 7px;
-  color: #496d37;
-  font-size: 10px;
-  touch-action: auto;
-}
-.selection-tools > span {
-  font-size: 9px;
-  color: #879f76;
-}
-.selection-tools label {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-}
-.selection-tools input {
-  width: 42px;
-  min-width: 0;
-  font-size: 10px;
-  padding: 3px;
-  border: 1px solid #d1ddc8;
-  background: #f4f8ee;
-  border-radius: 3px;
-  color: #345d48;
-}
-.selection-tools button {
-  height: 25px;
-  min-width: 24px;
-  border-radius: 4px;
-  padding: 4px;
-}
-.selection-tools button:first-of-type {
-  background: #e4eddc;
-}
-.selection-tools input[type="number"]::-webkit-inner-spin-button {
-  appearance: none;
-}
 [data-theme="dark"] .pen-preset,
 [data-theme="dark"] .pen-preset:hover:not(:disabled) {
   background: #26382c;
@@ -2104,19 +2055,6 @@ main {
   background: #203024;
   color: #d0dfc6;
   border-color: #455d3b;
-}
-[data-theme="dark"] .selection-tools {
-  background: #223528;
-  color: #d2e5c5;
-  border-color: #86a973;
-}
-[data-theme="dark"] .selection-tools input {
-  background: #152219;
-  color: #e3efdb;
-  border-color: #58724b;
-}
-[data-theme="dark"] .selection-tools button:first-of-type {
-  background: #3a5535;
 }
 @media (max-width: 650px) {
   .desk-options {
@@ -2143,13 +2081,6 @@ main {
   }
   .path-breadcrumb > span:not(.path-separator) {
     max-width: 70px;
-  }
-  .selection-tools {
-    font-size: 9px;
-    gap: 3px;
-  }
-  .selection-tools input {
-    width: 37px;
   }
 }
 .drive-panel {
@@ -2275,4 +2206,32 @@ main {
 }
 [data-theme="dark"] .mini-ink {
   color: #bad4a7;
+}
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid #ccdabe;
+  border-radius: 6px;
+  padding: 2px 5px;
+  color: #718862;
+}
+.selection-toolbar > span {
+  font-size: 9px;
+  white-space: nowrap;
+  margin: 0 4px;
+}
+.selection-toolbar .tool {
+  width: 29px;
+  height: 29px;
+}
+[data-theme="dark"] .selection-toolbar {
+  border-color: #4d6941;
+  color: #bfd6ac;
+  background: #213426;
+}
+.selection-toolbar > span {
+  width: 42px;
+  min-width: 42px;
+  text-align: center;
 }

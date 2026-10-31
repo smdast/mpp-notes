@@ -3,10 +3,12 @@ import { useDriveSync } from "./drive/useDriveSync";
 import { DrivePanel } from "./drive/DrivePanel";
 import type { SyncState, LibrarySnapshot } from "./drive/sync";
 import { createRoot } from "react-dom/client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   BookOpen,
   Cloud,
+  RotateCw,
+  FlipHorizontal2,
   Lasso,
   Plus,
   FileUp,
@@ -60,7 +62,7 @@ import {
 } from "./storage";
 import { makeBackup, readBackupBundle, download } from "./backup";
 import { importPDF, exportPDF } from "./pdf";
-import type { Tool } from "./Sheet";
+import type { Tool, SelectionActions } from "./Sheet";
 import { ContinuousNotebook } from "./ContinuousNotebook";
 import { Library } from "./Library";
 import { ThemeControl, useTheme } from "./ThemeControl";
@@ -84,6 +86,14 @@ type Dialog = {
 };
 function App() {
   const [driveOpen, setDriveOpen] = useState(false);
+  const [selection, setSelection] = useState<SelectionActions | null>(null);
+  const updateSelection = useCallback(
+    (value: SelectionActions | null, pageId: string) =>
+      setSelection((previous) =>
+        value || previous?.pageId === pageId ? value : previous,
+      ),
+    [],
+  );
   const [view, setView] = useState<"library" | "editor">("library");
   const [preferences, setPreferences] =
     useState<Preferences>(defaultPreferences);
@@ -882,6 +892,48 @@ function App() {
                   </button>
                 ))}
               </div>
+              {tool === "lasso" && (
+                <div
+                  className="selection-toolbar"
+                  aria-label="選択した線の操作"
+                >
+                  <span>
+                    {selection ? selection.count + " 本" : "選択なし"}
+                  </span>
+                  <button
+                    className="tool"
+                    title="選択を90度回転"
+                    disabled={!selection}
+                    onClick={selection?.rotate}
+                  >
+                    <RotateCw size={17} />
+                  </button>
+                  <button
+                    className="tool"
+                    title="選択を左右反転"
+                    disabled={!selection}
+                    onClick={selection?.flip}
+                  >
+                    <FlipHorizontal2 size={17} />
+                  </button>
+                  <button
+                    className="tool"
+                    title="選択したストロークを削除"
+                    disabled={!selection}
+                    onClick={selection?.remove}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                  <button
+                    className="tool"
+                    title="選択解除"
+                    disabled={!selection}
+                    onClick={selection?.clear}
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+              )}
               <span className="divider" />
               <div className="colors">
                 {colors.map((c) => (
@@ -1120,6 +1172,7 @@ function App() {
                   <ContinuousNotebook
                     dark={dark}
                     activePageId={page.id}
+                    onSelectionChange={updateSelection}
                     key={note.id}
                     note={note}
                     jump={jump}
