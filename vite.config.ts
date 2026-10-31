@@ -41,6 +41,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         navigateFallback: "index.html",
+        navigateFallbackDenylist: [/\/(?:about|privacy|terms)\.html$/],
       },
     }),
   ],

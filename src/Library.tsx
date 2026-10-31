@@ -256,6 +256,11 @@ export function Library({
           </div>
         )}
         {!ready && <div className="library-empty">ノートを読み込み中…</div>}
+        <nav className="library-info-links" aria-label="アプリ情報">
+          <a href="./about.html">MPP Notesについて</a>
+          <a href="./privacy.html">プライバシーポリシー</a>
+          <a href="./terms.html">利用規約</a>
+        </nav>
       </div>
     </section>
   );

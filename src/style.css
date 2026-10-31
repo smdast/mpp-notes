@@ -2235,3 +2235,6 @@ main {
   min-width: 42px;
   text-align: center;
 }
+
+.library-info-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 40px; padding-top: 20px; border-top: 1px solid #81917466; font-size: 12px; }
+.library-info-links a { color: inherit; text-underline-offset: 3px; }

@@ -37,6 +37,11 @@ export function DrivePanel({
         <p>
           接続すると、この端末内の全ノートとフォルダーを、選んだGoogleアカウントのアプリ専用領域へ自動同期します。接続する他の端末でも同じクライアントIDを設定してください。
         </p>
+        <p>
+          元PDFと変更履歴も同期します。データの利用・保存・削除については
+          <a href="./privacy.html" target="_blank" rel="noreferrer">プライバシーポリシー</a>
+          をご確認ください。
+        </p>
         <div className="drive-status" role="status">
           <b>{drive.status}</b>
           {drive.account && <span>{drive.account}</span>}
