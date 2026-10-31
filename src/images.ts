@@ -1,12 +1,23 @@
 import { uid, type Page, type Stroke } from "./model";
 const cache = new Map<string, Promise<HTMLImageElement>>();
-const loaded = new Map<string, HTMLImageElement>();
+const loaded = new Map<string, WeakRef<HTMLImageElement>>();
+const cleanup = new FinalizationRegistry<{data: string; ref: WeakRef<HTMLImageElement>}>(({data, ref}) => {
+  if (loaded.get(data) === ref) loaded.delete(data);
+});
 export function loadInkImage(data: string) {
+  const existing = loaded.get(data)?.deref();
+  if (existing) return Promise.resolve(existing);
   let pending = cache.get(data);
   if (!pending) {
     pending = new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new Image();
-      image.onload = () => { loaded.set(data, image); resolve(image); };
+      image.onload = () => {
+        const ref = new WeakRef(image);
+        loaded.set(data, ref);
+        cleanup.register(image, {data, ref});
+        cache.delete(data);
+        resolve(image);
+      };
       image.onerror = () => { cache.delete(data); reject(new Error("画像を読み込めません。")); };
       image.src = data;
     });
@@ -14,9 +25,9 @@ export function loadInkImage(data: string) {
   }
   return pending;
 }
-export function inkImage(data: string) { return loaded.get(data); }
+export function inkImage(data: string) { return loaded.get(data)?.deref(); }
 export async function prepareImages(strokes: Stroke[]) {
-  await Promise.all(strokes.flatMap((s) => s.image ? [loadInkImage(s.image)] : []));
+  return Promise.all(strokes.flatMap((s) => s.image ? [loadInkImage(s.image)] : []));
 }
 export async function imageStroke(blob: Blob, page: Pick<Page, "width" | "height">): Promise<Stroke> {
   if (!blob.type.startsWith("image/") || blob.size > 20 * 1024 * 1024)

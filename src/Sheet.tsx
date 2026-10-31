@@ -64,6 +64,8 @@ export function Sheet({
   onWriting,
 }: Props) {
   const cursor = useRef<HTMLDivElement>(null);
+  // Keep decoded images alive only while their page is mounted.
+  const decodedImages = useRef<HTMLImageElement[]>([]);
   const paper = useRef<HTMLCanvasElement>(null),
     ink = useRef<HTMLCanvasElement>(null);
   const current = useRef<Stroke | null>(null),
@@ -339,9 +341,11 @@ export function Sheet({
   }, [page.strokes, page.id, pixels, tool]);
   useEffect(() => {
     let disposed = false;
-    void prepareImages(page.strokes).then(() => { if (!disposed) paint(); })
+    void prepareImages(page.strokes).then((images) => {
+      if (!disposed) { decodedImages.current = images; paint(); }
+    })
       .catch(() => { if (!disposed) onError("保存された画像を読み込めません。"); });
-    return () => { disposed = true; };
+    return () => { disposed = true; decodedImages.current = []; };
   }, [page.strokes]);
   useEffect(
     () => () => {
