@@ -1,4 +1,5 @@
 import type { Page, Stroke } from "./model";
+import { isDarkColor, LIGHT_PAPER } from "./paper";
 // Rounded quadratic centerline, rendered as a continuous pressure-sensitive outline.
 export function smoothPoints(points: Stroke["points"]): Stroke["points"] {
   if (points.length < 3) return points;
@@ -107,11 +108,22 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
   }
   ctx.restore();
 }
-export function drawPaper(ctx: CanvasRenderingContext2D, p: Page) {
-  ctx.fillStyle = "#fffefa";
+export function drawPaper(
+  ctx: CanvasRenderingContext2D,
+  p: Page,
+  background?: string,
+) {
+  const color = background || p.paperColor || LIGHT_PAPER;
+  ctx.fillStyle = color;
   ctx.fillRect(0, 0, p.width, p.height);
   if (p.paper === "blank") return;
-  ctx.strokeStyle = p.paper === "grid" ? "#e6e9e5" : "#dce5e9";
+  ctx.strokeStyle = isDarkColor(color)
+    ? p.paper === "grid"
+      ? "#3a4940"
+      : "#45574b"
+    : p.paper === "grid"
+      ? "#e6e9e5"
+      : "#dce5e9";
   ctx.lineWidth = 0.65;
   const gap = 26;
   ctx.beginPath();

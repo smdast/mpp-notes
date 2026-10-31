@@ -10,6 +10,7 @@ export type Stroke = {
 };
 export type Paper = "blank" | "ruled" | "grid";
 export type Page = {
+  paperColor?: string;
   id: string;
   width: number;
   height: number;

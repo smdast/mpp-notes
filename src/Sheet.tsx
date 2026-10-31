@@ -10,16 +10,21 @@ import {
   erase,
   selectLasso,
   moveSelection,
+  transformSelection,
   selectionBounds,
   renderScale,
   type EraserMode,
 } from "./editing";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { correctShape } from "./shapes";
+import { SelectionTools } from "./SelectionTools";
+import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
   page: Page;
+  paperColor: string;
+  isActive: boolean;
   pdfDocument?: PDFDocumentProxy;
   pressure: boolean;
   shapeCorrection: boolean;
@@ -37,6 +42,8 @@ type Props = {
 };
 export function Sheet({
   page,
+  paperColor,
+  isActive,
   pdfDocument,
   pressure,
   shapeCorrection,
@@ -66,6 +73,66 @@ export function Sheet({
     moving = useRef<Point | null>(null),
     original = useRef<Stroke[]>([]);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [, refreshSelection] = useState(0),
+    [editingSelection, setEditingSelection] = useState(false);
+  const transform = useRef<{
+    kind: "scale" | "rotate";
+    start: Point;
+    cx: number;
+    cy: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  function clearSelection() {
+    selected.current.clear();
+    refreshSelection((v) => v + 1);
+    paint();
+  }
+  function applyTransform(sx: number, sy: number, angle: number) {
+    const b = selectionBounds(page.strokes, selected.current);
+    if (!b) return;
+    onActivate();
+    working.current = transformSelection(page.strokes, selected.current, {
+      scaleX: sx,
+      scaleY: sy,
+      angle,
+      cx: (b.left + b.right) / 2,
+      cy: (b.top + b.bottom) / 2,
+    });
+    onCommit(working.current);
+    refreshSelection((v) => v + 1);
+    paint();
+  }
+  function removeSelection() {
+    if (!selected.current.size) return;
+    onActivate();
+    working.current = page.strokes.filter((s) => !selected.current.has(s.id));
+    selected.current.clear();
+    onCommit(working.current);
+    refreshSelection((v) => v + 1);
+    paint();
+  }
+  useEffect(() => {
+    if (!isActive) clearSelection();
+  }, [isActive]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (
+        !isActive ||
+        tool !== "lasso" ||
+        !selected.current.size ||
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLSelectElement
+      )
+        return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        removeSelection();
+      } else if (e.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [isActive, tool, page.strokes]);
   const [dpr, setDpr] = useState(window.devicePixelRatio || 1);
   useEffect(() => {
     const resize = () => setDpr(window.devicePixelRatio || 1);
@@ -83,12 +150,12 @@ export function Sheet({
     if (current.current) drawStroke(ctx, current.current);
     if (tool === "lasso") {
       ctx.save();
-      ctx.strokeStyle = "#397956";
+      ctx.strokeStyle = isDarkColor(paperColor) ? "#acd49a" : "#397956";
       ctx.lineWidth = 1.3 / zoom;
       ctx.setLineDash([5 / zoom, 4 / zoom]);
       const b = selectionBounds(working.current, selected.current);
       if (b) {
-        ctx.fillStyle = "#427b5812";
+        ctx.fillStyle = isDarkColor(paperColor) ? "#a9d39420" : "#427b5812";
         ctx.fillRect(
           b.left - 6,
           b.top - 6,
@@ -101,6 +168,29 @@ export function Sheet({
           b.right - b.left + 12,
           b.bottom - b.top + 12,
         );
+      }
+      if (b) {
+        ctx.setLineDash([]);
+        const size = 7 / zoom;
+        ctx.fillStyle = isDarkColor(paperColor) ? "#c9e4b9" : "#fffefa";
+        for (const [x, y] of [
+          [b.left, b.top],
+          [b.right, b.top],
+          [b.left, b.bottom],
+          [b.right, b.bottom],
+        ]) {
+          ctx.fillRect(x - size / 2, y - size / 2, size, size);
+          ctx.strokeRect(x - size / 2, y - size / 2, size, size);
+        }
+        const cx = (b.left + b.right) / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, b.top);
+        ctx.lineTo(cx, b.top - 22 / zoom);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, b.top - 22 / zoom, 5 / zoom, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
       }
       if (lasso.current.length) {
         ctx.beginPath();
@@ -127,6 +217,7 @@ export function Sheet({
         page.strokes.some((s) => s.id === id),
       ),
     );
+    refreshSelection((v) => v + 1);
     paint();
   }, [page.strokes, page.id, pixels, tool]);
   useEffect(
@@ -151,7 +242,7 @@ export function Sheet({
       0,
       0,
     );
-    drawPaper(ctx, page);
+    drawPaper(ctx, page, paperColor);
     if (page.pdfIndex !== undefined) {
       setPdfLoading(true);
       if (pdfDocument)
@@ -175,7 +266,7 @@ export function Sheet({
       disposed = true;
       render?.cancel();
     };
-  }, [page.id, page.paper, pdfDocument, pixels]);
+  }, [page.id, page.paper, page.paperColor, paperColor, pdfDocument, pixels]);
   const point = (e: {
     clientX: number;
     clientY: number;
@@ -222,17 +313,55 @@ export function Sheet({
     if (erasing.current) applyEraser(p, p);
     else if (tool === "lasso") {
       const b = selectionBounds(page.strokes, selected.current);
-      if (
+      const corners = b
+        ? [
+            [b.left, b.top, b.right, b.bottom],
+            [b.right, b.top, b.left, b.bottom],
+            [b.left, b.bottom, b.right, b.top],
+            [b.right, b.bottom, b.left, b.top],
+          ]
+        : [];
+      const corner = corners.find(
+        ([x, y]) => Math.hypot(p.x - x, p.y - y) < 12 / zoom,
+      );
+      const rotate =
+        b &&
+        Math.hypot(p.x - (b.left + b.right) / 2, p.y - (b.top - 22 / zoom)) <
+          12 / zoom;
+      if (b && rotate) {
+        transform.current = {
+          kind: "rotate",
+          start: p,
+          cx: (b.left + b.right) / 2,
+          cy: (b.top + b.bottom) / 2,
+          startX: 0,
+          startY: 0,
+        };
+        setEditingSelection(true);
+      } else if (corner) {
+        const [x, y, cx, cy] = corner;
+        transform.current = {
+          kind: "scale",
+          start: p,
+          cx,
+          cy,
+          startX: x - cx,
+          startY: y - cy,
+        };
+        setEditingSelection(true);
+      } else if (
         b &&
         p.x >= b.left - 8 &&
         p.x <= b.right + 8 &&
         p.y >= b.top - 8 &&
         p.y <= b.bottom + 8
-      )
+      ) {
         moving.current = p;
-      else {
+        setEditingSelection(true);
+      } else {
         selected.current.clear();
         lasso.current = [p];
+        refreshSelection((v) => v + 1);
       }
     } else
       current.current = {
@@ -267,7 +396,34 @@ export function Sheet({
         applyEraser(last.current || p, p);
         last.current = p;
       } else if (tool === "lasso") {
-        if (moving.current)
+        if (transform.current) {
+          const t = transform.current;
+          if (t.kind === "rotate") {
+            const angle =
+              Math.atan2(p.y - t.cy, p.x - t.cx) -
+              Math.atan2(t.start.y - t.cy, t.start.x - t.cx);
+            working.current = transformSelection(
+              original.current,
+              selected.current,
+              { angle, cx: t.cx, cy: t.cy },
+            );
+          } else {
+            const safe = (n: number) =>
+              Math.sign(n || 1) * Math.max(0.05, Math.min(20, Math.abs(n)));
+            let sx = safe((p.x - t.cx) / (t.startX || 1)),
+              sy = safe((p.y - t.cy) / (t.startY || 1));
+            if (e.shiftKey) {
+              const magnitude = Math.max(Math.abs(sx), Math.abs(sy));
+              sx = Math.sign(sx) * magnitude;
+              sy = Math.sign(sy) * magnitude;
+            }
+            working.current = transformSelection(
+              original.current,
+              selected.current,
+              { scaleX: sx, scaleY: sy, cx: t.cx, cy: t.cy },
+            );
+          }
+        } else if (moving.current)
           working.current = moveSelection(
             original.current,
             selected.current,
@@ -286,9 +442,12 @@ export function Sheet({
       e.type === "pointercancel" || e.type === "lostpointercapture";
     if (tool === "lasso" && !erasing.current) {
       if (cancel) working.current = original.current;
-      else if (!moving.current)
+      else if (!moving.current && !transform.current)
         selected.current = selectLasso(working.current, lasso.current);
       moving.current = null;
+      transform.current = null;
+      setEditingSelection(false);
+      refreshSelection((v) => v + 1);
       lasso.current = [];
     }
     if (current.current)
@@ -307,10 +466,15 @@ export function Sheet({
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
   }
+  const bounds = selectionBounds(working.current, selected.current);
   return (
     <div
       className="sheet"
-      style={{ width: page.width * zoom, height: page.height * zoom }}
+      style={{
+        width: page.width * zoom,
+        height: page.height * zoom,
+        background: paperColor,
+      }}
     >
       <canvas
         ref={paper}
@@ -339,6 +503,21 @@ export function Sheet({
         className="eraser-cursor"
         style={{ width: eraserSize, height: eraserSize, display: "none" }}
       />
+      {isActive && tool === "lasso" && bounds && !editingSelection && (
+        <SelectionTools
+          count={selected.current.size}
+          left={bounds.left * zoom}
+          top={
+            bounds.top * zoom > 120
+              ? bounds.top * zoom - 110
+              : Math.min(page.height * zoom - 90, bounds.bottom * zoom + 35)
+          }
+          maxWidth={page.width * zoom}
+          onTransform={applyTransform}
+          onDelete={removeSelection}
+          onClear={clearSelection}
+        />
+      )}
       {pdfLoading && <div className="page-loading">PDFを読み込み中…</div>}
     </div>
   );

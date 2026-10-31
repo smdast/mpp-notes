@@ -38,6 +38,7 @@ function validStroke(s: Stroke) {
 }
 function validPage(p: Page) {
   return (
+    (p.paperColor === undefined || /^#[0-9a-f]{6}$/i.test(p.paperColor)) &&
     typeof p.id === "string" &&
     finite(p.width) &&
     p.width > 0 &&
@@ -52,20 +53,31 @@ function validPage(p: Page) {
       (Number.isInteger(p.pdfIndex) && p.pdfIndex >= 0))
   );
 }
-export function readBackupBundle(data: Uint8Array): {
+export function readBackupBundle(
+  data: Uint8Array,
+  preserveIds = false,
+  attachments?: Record<string, Uint8Array>,
+): {
   notes: Note[];
   folders: string[];
 } {
   try {
     if (data.length > MAX_BYTES) throw Error();
     let total = 0;
-    const files = unzipSync(data, {
+    const files: Record<string, Uint8Array> = unzipSync(data, {
       filter: (f) => {
         total += f.originalSize;
         if (total > MAX_BYTES) throw Error();
         return true;
       },
     });
+    if (attachments) {
+      for (const [path, bytes] of Object.entries(attachments)) {
+        total += bytes.length;
+        if (total > MAX_BYTES) throw Error();
+        files[path] = bytes;
+      }
+    }
     const m = JSON.parse(strFromU8(files["manifest.json"]));
     if (
       m.format !== "mpp-notes" ||
@@ -80,6 +92,8 @@ export function readBackupBundle(data: Uint8Array): {
           (typeof n.folder !== "string" ||
             n.folder.length > 2019 ||
             n.folder === "*")) ||
+        (preserveIds &&
+          (!finite(n.updated) || typeof n.id !== "string" || !n.id)) ||
         typeof n.title !== "string" ||
         n.title.length > 300 ||
         !Array.isArray(n.pages) ||
@@ -92,14 +106,17 @@ export function readBackupBundle(data: Uint8Array): {
         throw Error();
       if (n.pages.some((p) => p.pdfIndex !== undefined && !pdf)) throw Error();
       return {
-        id: uid(),
+        id: preserveIds ? n.id : uid(),
         title: n.title,
         folder: n.folder,
-        updated: Date.now(),
+        updated: preserveIds ? n.updated : Date.now(),
         pages: n.pages.map((p) => ({
           ...p,
-          id: uid(),
-          strokes: p.strokes.map((s) => ({ ...s, id: uid() })),
+          id: preserveIds ? p.id : uid(),
+          strokes: p.strokes.map((s) => ({
+            ...s,
+            id: preserveIds ? s.id : uid(),
+          })),
         })),
         ...(pdf ? { pdf } : {}),
       };

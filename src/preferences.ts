@@ -1,6 +1,11 @@
 export type PenId = "pen1" | "pen2" | "pen3" | "marker";
 export type Theme = "system" | "light" | "dark";
-export type PenSettings = { color: string; width: number; pressure: boolean };
+export type PenSettings = {
+  color: string;
+  width: number;
+  pressure: boolean;
+  customColor?: boolean;
+};
 export type Preferences = {
   theme: Theme;
   pens: Record<PenId, PenSettings>;
@@ -32,7 +37,13 @@ export function readPreferences(value: unknown): Preferences {
       [1, 2.5, 4, 6, 10].includes(p.width) &&
       typeof p.pressure === "boolean"
     )
-      base.pens[key] = { ...p };
+      base.pens[key] = {
+        ...p,
+        customColor:
+          typeof p.customColor === "boolean"
+            ? p.customColor
+            : p.color !== base.pens[key].color,
+      };
   }
   if (v.activePen && v.activePen in base.pens) base.activePen = v.activePen;
   if (typeof v.shapeCorrection === "boolean")

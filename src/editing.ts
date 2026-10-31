@@ -109,6 +109,40 @@ export function selectionBounds(strokes: Stroke[], ids: Set<string>) {
       }
   return Number.isFinite(left) ? { left, top, right, bottom } : null;
 }
+export function transformSelection(
+  strokes: Stroke[],
+  ids: Set<string>,
+  {
+    scaleX = 1,
+    scaleY = 1,
+    angle = 0,
+    cx,
+    cy,
+  }: {
+    scaleX?: number;
+    scaleY?: number;
+    angle?: number;
+    cx: number;
+    cy: number;
+  },
+) {
+  const c = Math.cos(angle),
+    s = Math.sin(angle),
+    weight = Math.sqrt(Math.abs(scaleX * scaleY));
+  return strokes.map((stroke) =>
+    ids.has(stroke.id)
+      ? {
+          ...stroke,
+          width: Math.max(0.05, Math.min(100, stroke.width * weight)),
+          points: stroke.points.map((p) => {
+            const x = (p.x - cx) * scaleX,
+              y = (p.y - cy) * scaleY;
+            return { ...p, x: cx + x * c - y * s, y: cy + x * s + y * c };
+          }),
+        }
+      : stroke,
+  );
+}
 export function renderScale(
   width: number,
   height: number,

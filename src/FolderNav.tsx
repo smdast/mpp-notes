@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Folder, FolderPlus, Pencil, Trash2, Check, X } from "lucide-react";
 import { folderName, parentFolder, isWithin } from "./folders";
+import { displayPath } from "./Breadcrumb";
 import type { Note } from "./model";
 type Props = {
   folders: string[];
@@ -71,7 +72,7 @@ export function FolderNav({
         ].map((f) => (
           <button
             key={f.id}
-            title={f.id === "*" ? f.name : f.id || "未分類"}
+            title={f.id === "*" ? f.name : displayPath(f.id) || "未分類"}
             style={{
               paddingLeft: 8 + Math.max(0, f.id.split("/").length - 1) * 14,
             }}
@@ -153,7 +154,7 @@ export function FolderNav({
               .filter((f) => !edit.from || !isWithin(f, edit.from))
               .map((f) => (
                 <option key={f} value={f}>
-                  {f}
+                  {displayPath(f)}
                 </option>
               ))}
           </select>

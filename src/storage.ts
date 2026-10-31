@@ -120,3 +120,31 @@ export async function savePreferences(value: Preferences) {
   tx.objectStore("settings").put(value, "preferences");
   await completion(db, tx);
 }
+export async function loadSetting<T>(key: string): Promise<T | undefined> {
+  const db = await openDB();
+  const tx = db.transaction("settings", "readonly");
+  const request = tx.objectStore("settings").get(key);
+  await completion(db, tx);
+  return request.result;
+}
+export async function saveSetting(key: string, value: unknown) {
+  const db = await openDB();
+  const tx = db.transaction("settings", "readwrite");
+  tx.objectStore("settings").put(value, key);
+  await completion(db, tx);
+}
+export async function saveSyncSnapshot(
+  notes: Note[],
+  folders: string[],
+  key: string,
+  state: unknown,
+) {
+  const db = await openDB();
+  const tx = db.transaction(["notes", "pdfs", "settings"], "readwrite");
+  tx.objectStore("notes").clear();
+  tx.objectStore("pdfs").clear();
+  notes.forEach((n) => put(tx, n));
+  tx.objectStore("settings").put(folders, "folders");
+  tx.objectStore("settings").put(state, key);
+  await completion(db, tx);
+}

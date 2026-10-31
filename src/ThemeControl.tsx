@@ -1,12 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Moon, Sun, Monitor } from "lucide-react";
 import type { Theme } from "./preferences";
 export function useTheme(theme: Theme) {
+  const [dark, setDark] = useState(
+    () =>
+      theme === "dark" ||
+      (theme === "system" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches),
+  );
   useEffect(() => {
     const query = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
       const resolved =
         theme === "system" ? (query.matches ? "dark" : "light") : theme;
+      setDark(resolved === "dark");
       document.documentElement.dataset.theme = resolved;
       document.documentElement.style.colorScheme = resolved;
       document
@@ -17,6 +24,7 @@ export function useTheme(theme: Theme) {
     query.addEventListener("change", apply);
     return () => query.removeEventListener("change", apply);
   }, [theme]);
+  return dark;
 }
 export function ThemeControl({
   theme,

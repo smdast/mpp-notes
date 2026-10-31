@@ -8,12 +8,16 @@ import {
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Note, Page, Stroke } from "./model";
+import { ScrollMotion } from "./motion";
+import { pagePaperColor } from "./paper";
 import { zoomScrollTop } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
 type Props = {
   note: Note;
+  dark: boolean;
+  activePageId: string;
   jump: { id: string; token: number };
   zoom: number;
   setZoom: (zoom: number) => void;
@@ -73,6 +77,8 @@ function PageSlot({
       {visible || pinned ? (
         <Sheet
           page={page}
+          paperColor={pagePaperColor(page, props.dark)}
+          isActive={props.activePageId === page.id}
           pdfDocument={document}
           zoom={props.zoom}
           tool={props.tool}
@@ -94,7 +100,10 @@ function PageSlot({
       ) : (
         <div
           className="page-placeholder"
-          style={{ height: page.height * props.zoom }}
+          style={{
+            height: page.height * props.zoom,
+            background: pagePaperColor(page, props.dark),
+          }}
         >
           ページ {index + 1}
         </div>
@@ -112,12 +121,22 @@ export function ContinuousNotebook(props: Props) {
     swipe = useRef({ distance: 0, multi: false }),
     frame = useRef(0);
   const { note, zoom, setZoom, onActive, onError } = props;
+  const motion = useRef<ScrollMotion | null>(null),
+    velocity = useRef({ x: 0, y: 0, time: 0 });
+  useEffect(() => {
+    if (viewport.current) motion.current = new ScrollMotion(viewport.current);
+    return () => {
+      motion.current?.destroy();
+      motion.current = null;
+    };
+  }, []);
   const previousZoom = useRef(zoom),
     scrollY = useRef(0),
     zoomAnchor = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
     const v = viewport.current;
     if (v && previousZoom.current !== zoom) {
+      motion.current?.stop();
       v.scrollTop = zoomScrollTop(
         note.pages,
         previousZoom.current,
@@ -158,8 +177,13 @@ export function ContinuousNotebook(props: Props) {
         (e) => e.dataset.pageId === props.jump.id,
       );
       if (page) {
-        v.scrollTop +=
-          page.getBoundingClientRect().top - v.getBoundingClientRect().top - 16;
+        const top =
+          v.scrollTop +
+          page.getBoundingClientRect().top -
+          v.getBoundingClientRect().top -
+          16;
+        if (motion.current) motion.current.easeTo(v.scrollLeft, top);
+        else v.scrollTop = top;
         scrollY.current = v.scrollTop;
       }
     });
@@ -174,6 +198,7 @@ export function ContinuousNotebook(props: Props) {
   );
   function writing(id: string, b: boolean) {
     if (b) {
+      motion.current?.stop();
       drawing.current.add(id);
       touches.current.clear();
       gesture.current = null;
@@ -200,6 +225,8 @@ export function ContinuousNotebook(props: Props) {
     if (drawing.current.size) return;
     if (e.pointerType !== "touch" && props.tool !== "hand" && e.button !== 1)
       return;
+    motion.current?.stop();
+    velocity.current = { x: 0, y: 0, time: e.timeStamp };
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -228,6 +255,12 @@ export function ContinuousNotebook(props: Props) {
         before = v.scrollTop;
       v.scrollLeft -= x - prev.x;
       v.scrollTop -= dy;
+      const dt = Math.max(1, e.timeStamp - velocity.current.time);
+      velocity.current = {
+        x: velocity.current.x * 0.4 + (-(x - prev.x) / dt) * 0.6,
+        y: velocity.current.y * 0.4 + (-dy / dt) * 0.6,
+        time: e.timeStamp,
+      };
       if (points.length === 1 && !swipe.current.multi) {
         if (dy < 0 && v.scrollTop >= max - 3)
           swipe.current.distance += Math.max(0, -dy - (max - before));
@@ -272,6 +305,13 @@ export function ContinuousNotebook(props: Props) {
     if (add) {
       touches.current.clear();
       props.onAddPage();
+    } else if (
+      e.type === "pointerup" &&
+      !swipe.current.multi &&
+      !touches.current.size &&
+      e.timeStamp - velocity.current.time < 90
+    ) {
+      motion.current?.fling(velocity.current.x, velocity.current.y);
     }
   }
   return (
@@ -282,6 +322,7 @@ export function ContinuousNotebook(props: Props) {
       }
       ref={viewport}
       onScroll={scroll}
+      onPointerDownCapture={() => motion.current?.stop()}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={end}

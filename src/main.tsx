@@ -1,7 +1,12 @@
+import { flushSync } from "react-dom";
+import { useDriveSync } from "./drive/useDriveSync";
+import { DrivePanel } from "./drive/DrivePanel";
+import type { SyncState, LibrarySnapshot } from "./drive/sync";
 import { createRoot } from "react-dom/client";
 import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
+  Cloud,
   Lasso,
   Plus,
   FileUp,
@@ -42,6 +47,7 @@ import {
 } from "./model";
 import {
   loadNotes,
+  saveSyncSnapshot,
   loadPreferences,
   savePreferences,
   loadFolders,
@@ -58,6 +64,8 @@ import type { Tool } from "./Sheet";
 import { ContinuousNotebook } from "./ContinuousNotebook";
 import { Library } from "./Library";
 import { ThemeControl, useTheme } from "./ThemeControl";
+import { Breadcrumb, displayPath } from "./Breadcrumb";
+import { pagePaperColor, penColor, isDarkColor, darkPenColors } from "./paper";
 import { normalizeFolders, relocateFolder } from "./folders";
 import {
   defaultPreferences,
@@ -75,13 +83,14 @@ type Dialog = {
   value?: string;
 };
 function App() {
+  const [driveOpen, setDriveOpen] = useState(false);
   const [view, setView] = useState<"library" | "editor">("library");
   const [preferences, setPreferences] =
     useState<Preferences>(defaultPreferences);
-  useTheme(preferences.theme);
+  const dark = useTheme(preferences.theme);
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
-  const { color, width, pressure } = preferences.pens[preferences.activePen];
+  const { width, pressure } = preferences.pens[preferences.activePen];
   const [jump, setJump] = useState({ id: "", token: 0 });
 
   const [notes, setNotes] = useState<Note[]>([]),
@@ -113,8 +122,65 @@ function App() {
   const note = notes.find((n) => n.id === noteId),
     page = note?.pages.find((p) => p.id === pageId) || note?.pages[0],
     pageIndex = note && page ? note.pages.indexOf(page) : 0;
+  const currentPaperColor = page
+    ? pagePaperColor(page, dark)
+    : dark
+      ? "#1e2822"
+      : "#fffefa";
+  const color = penColor(
+    preferences.pens[preferences.activePen],
+    preferences.activePen,
+    isDarkColor(currentPaperColor),
+  );
   const notesRef = useRef(notes);
   notesRef.current = notes;
+  const foldersRef = useRef(folders);
+  foldersRef.current = folders;
+  const drive = useDriveSync({
+    snapshot: { notes, folders },
+    ready,
+    canSync: () =>
+      pending.current === 0 && !failed.current && !writing.current && !busy,
+    apply: applyIncoming,
+  });
+  async function applyIncoming(
+    next: LibrarySnapshot,
+    state: SyncState,
+    expected: LibrarySnapshot,
+    key: string,
+  ) {
+    if (
+      writing.current ||
+      busy ||
+      notesRef.current !== expected.notes ||
+      foldersRef.current !== expected.folders
+    )
+      return false;
+    flushSync(() => setBusy("Google Driveの変更を反映中"));
+    try {
+      await queue.current;
+      if (
+        notesRef.current !== expected.notes ||
+        foldersRef.current !== expected.folders
+      )
+        return false;
+      await saveSyncSnapshot(next.notes, next.folders, key, state);
+      notesRef.current = next.notes;
+      foldersRef.current = next.folders;
+      setNotes(next.notes);
+      setFolders(next.folders);
+      histories.current.clear();
+      setHistoryRevision((v) => v + 1);
+      const current = next.notes.find((n) => n.id === noteId);
+      if (!current && view === "editor") library();
+      else if (current && !current.pages.some((p) => p.id === pageId))
+        goPage(current.pages[0].id);
+      return true;
+    } finally {
+      setBusy("");
+    }
+  }
+
   function retrySave() {
     failed.current = false;
     enqueue(async () => {
@@ -147,7 +213,7 @@ function App() {
     });
   }
   function setColor(color: string) {
-    setPen({ color });
+    setPen({ color, customColor: true });
   }
   function setWidth(width: number) {
     setPen({ width });
@@ -287,7 +353,14 @@ function App() {
       ),
     );
     setHistoryRevision((v) => v + 1);
-    updatePage({ ...target, strokes });
+    updatePage({
+      ...target,
+      paperColor:
+        target.pdfIndex === undefined
+          ? pagePaperColor(target, dark)
+          : undefined,
+      strokes,
+    });
   }
   function undo(redo = false) {
     if (!page) return;
@@ -460,14 +533,9 @@ function App() {
       setError(e instanceof Error ? e.message : "フォルダーを変更できません。");
     }
   }
-  const colors = [
-    "#243d35",
-    "#202b39",
-    "#376fac",
-    "#bd6263",
-    "#bd8d39",
-    "#8466a5",
-  ];
+  const colors = dark
+    ? ["#e3efdf", "#d0d9e9", "#8ec5ff", "#ffa5ad", "#e9c968", "#c1a7ef"]
+    : ["#243d35", "#202b39", "#376fac", "#bd6263", "#bd8d39", "#8466a5"];
   return (
     <div className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
       {view === "library" && (
@@ -521,7 +589,12 @@ function App() {
             <div>
               <ShieldCheck size={17} />
               <span>
-                あなたの端末に保存<small>ノートは外部に送信されません</small>
+                あなたの端末に保存
+                <small>
+                  {drive.connected
+                    ? "Google Driveと自動同期"
+                    : "Drive接続は任意です"}
+                </small>
               </span>
             </div>
             <div className="backup-actions">
@@ -554,6 +627,17 @@ function App() {
       <main>
         {view === "library" ? (
           <Library
+            driveControl={
+              <button
+                className="export-button drive-toggle"
+                aria-label="Google Drive自動同期"
+                title={drive.status}
+                onClick={() => setDriveOpen(true)}
+              >
+                <Cloud size={16} />
+                <span>Google Drive</span>
+              </button>
+            }
             themeControl={
               <ThemeControl
                 theme={preferences.theme}
@@ -598,7 +682,8 @@ function App() {
                   <span>ノート管理</span>
                 </button>
                 <span className="breadcrumb-library">
-                  {note?.folder || "未分類"} <ChevronRight size={13} />
+                  <Breadcrumb folder={note?.folder} />
+                  <span className="path-separator">&gt;</span>
                 </span>
                 <strong>{note?.title || "ノートをはじめよう"}</strong>
                 {note && (
@@ -629,7 +714,7 @@ function App() {
                             <option value="">未分類</option>
                             {folders.map((f) => (
                               <option key={f} value={f}>
-                                {f}
+                                {displayPath(f)}
                               </option>
                             ))}
                           </select>
@@ -657,6 +742,14 @@ function App() {
                 )}
               </div>
               <div className="top-actions">
+                <button
+                  className="icon-button"
+                  title="Google Drive自動同期"
+                  aria-label="Google Drive自動同期"
+                  onClick={() => setDriveOpen(true)}
+                >
+                  <Cloud size={17} />
+                </button>
                 <ThemeControl
                   theme={preferences.theme}
                   onChange={(theme) =>
@@ -683,7 +776,13 @@ function App() {
                     note &&
                     void run("PDFを書き出し中", async () =>
                       download(
-                        await exportPDF(note),
+                        await exportPDF({
+                          ...note,
+                          pages: note.pages.map((p) => ({
+                            ...p,
+                            paperColor: pagePaperColor(p, dark),
+                          })),
+                        }),
                         `${note.title.replace(/[\\/:*?"<>|]/g, "_")}.pdf`,
                         "application/pdf",
                       ),
@@ -749,7 +848,9 @@ function App() {
                       }
                       title={id === "marker" ? "蛍光ペン (H)" : `ペン${i + 1}`}
                       onClick={() => choosePen(id)}
-                      style={{ color: preferences.pens[id].color }}
+                      style={{
+                        color: penColor(preferences.pens[id], id, dark),
+                      }}
                     >
                       {id === "marker" ? (
                         <Highlighter size={19} />
@@ -902,6 +1003,7 @@ function App() {
                         aria-current={p.id === page.id ? "page" : undefined}
                       >
                         <span
+                          style={{ backgroundColor: pagePaperColor(p, dark) }}
                           className={
                             "mini-paper " +
                             (p.pdfIndex !== undefined ? "pdf-paper" : p.paper)
@@ -938,6 +1040,57 @@ function App() {
                 </div>
                 <section className="desk">
                   <div className="desk-options">
+                    <label className="paper-color-select">
+                      用紙色
+                      <select
+                        aria-label="用紙の色"
+                        value={page.paperColor || currentPaperColor}
+                        disabled={page.pdfIndex !== undefined}
+                        onChange={(e) =>
+                          updatePage({
+                            ...page,
+                            paperColor:
+                              e.target.value === "auto"
+                                ? dark
+                                  ? "#1e2822"
+                                  : "#fffefa"
+                                : e.target.value,
+                          })
+                        }
+                      >
+                        <option value="auto">テーマの既定色</option>
+                        {[
+                          ["#fffefa", "白"],
+                          ["#fff7dc", "クリーム"],
+                          ["#e9edf2", "薄いグレー"],
+                          ["#1e2822", "ダークグリーン"],
+                          ["#20252d", "ダークグレー"],
+                        ].map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                        {page.paperColor &&
+                          ![
+                            "#fffefa",
+                            "#fff7dc",
+                            "#e9edf2",
+                            "#1e2822",
+                            "#20252d",
+                          ].includes(page.paperColor) && (
+                            <option value={page.paperColor}>カスタム</option>
+                          )}
+                      </select>
+                      <input
+                        type="color"
+                        aria-label="用紙のカスタム色"
+                        value={currentPaperColor}
+                        disabled={page.pdfIndex !== undefined}
+                        onChange={(e) =>
+                          updatePage({ ...page, paperColor: e.target.value })
+                        }
+                      />
+                    </label>
                     <label className="paper-select">
                       用紙{" "}
                       <select
@@ -965,6 +1118,8 @@ function App() {
                     </label>
                   </div>
                   <ContinuousNotebook
+                    dark={dark}
+                    activePageId={page.id}
                     key={note.id}
                     note={note}
                     jump={jump}
@@ -1113,6 +1268,9 @@ function App() {
           if (f) void restore(f);
         }}
       />
+      {driveOpen && (
+        <DrivePanel drive={drive} onClose={() => setDriveOpen(false)} />
+      )}
       {busy && (
         <div className="busy-overlay" role="status">
           <LoaderCircle className="spin" size={25} />
@@ -1241,7 +1399,8 @@ function App() {
                   　PWAをインストールできます。初回のオフライン準備が完了した後は、通信なしでもノートとPDFを開けます。
                 </p>
                 <p className="help-note">
-                  MPPの筆圧・手のひら除外・ボタンの認識は、端末・ドライバー・ブラウザーに依存します。ログイン・通信によるノートの送信はありません。
+                  MPPの筆圧・手のひら除外・ボタンの認識は、端末・ドライバー・ブラウザーに依存します。Google
+                  Driveを接続するとノートとフォルダーを同期します。未接続では端末内に保存します。
                 </p>
               </div>
             ) : (

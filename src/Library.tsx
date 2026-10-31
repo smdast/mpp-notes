@@ -10,10 +10,12 @@ import {
   FileUp,
   PanelLeft,
 } from "lucide-react";
+import { displayPath } from "./Breadcrumb";
 import type { Note } from "./model";
 import { folderName, parentFolder, isWithin } from "./folders";
 type Props = {
   themeControl: ReactNode;
+  driveControl: ReactNode;
   notes: Note[];
   folders: string[];
   folder: string;
@@ -32,6 +34,7 @@ type Props = {
 };
 export function Library({
   themeControl,
+  driveControl,
   notes,
   folders,
   folder,
@@ -84,6 +87,7 @@ export function Library({
         </div>
         <div>
           {themeControl}
+          {driveControl}
           <button
             className="export-button"
             disabled={!ready}
@@ -109,14 +113,18 @@ export function Library({
         <button onClick={() => onFolder("*")}>すべてのノート</button>
         {folder === "" ? (
           <>
-            <ChevronRight size={13} />
+            <span className="path-separator" aria-hidden="true">
+              &gt;
+            </span>
             <span>未分類</span>
           </>
         ) : (
           folder !== "*" &&
           folder.split("/").map((part, i) => (
             <span key={i}>
-              <ChevronRight size={13} />
+              <span className="path-separator" aria-hidden="true">
+                &gt;
+              </span>
               <button
                 onClick={() =>
                   onFolder(
@@ -203,7 +211,7 @@ export function Library({
                     {n.pages.length} ページ <span>·</span>{" "}
                     {new Date(n.updated).toLocaleDateString("ja-JP")}
                   </p>
-                  <small>{n.folder || "未分類"}</small>
+                  <small>{n.folder ? displayPath(n.folder) : "未分類"}</small>
                 </div>
               </button>
               <div className="note-card-actions">
@@ -215,7 +223,7 @@ export function Library({
                   <option value="">未分類</option>
                   {folders.map((f) => (
                     <option key={f} value={f}>
-                      {f.replaceAll("/", " / ")}
+                      {displayPath(f)}
                     </option>
                   ))}
                 </select>
