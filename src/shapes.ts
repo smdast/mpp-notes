@@ -6,7 +6,29 @@ const length = (points: Point[]) =>
       (sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y),
       0,
     );
-export function correctShape(stroke: Stroke): Stroke {
+function snapLine(first: Point, last: Point, references: Stroke[]) {
+  const angle = Math.atan2(last.y - first.y, last.x - first.x);
+  const distance = Math.hypot(last.x - first.x, last.y - first.y);
+  const cx = (first.x + last.x) / 2, cy = (first.y + last.y) / 2;
+  const axis = Math.round(angle / (Math.PI / 2)) * Math.PI / 2;
+  // Prefer paper axes; otherwise nearby straight lines can guide parallel/perpendicular edges.
+  let target = Math.abs(angle - axis) <= Math.PI / 18 ? axis : angle;
+  let best = target === angle ? Math.PI / 30 : 0;
+  for (const line of references.slice(-200)) {
+    if (line.shape !== "line" || line.image || line.points.length < 2) continue;
+    const a = line.points[0], b = line.points.at(-1)!;
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 35 ||
+      Math.hypot(cx - (a.x + b.x) / 2, cy - (a.y + b.y) / 2) > 450) continue;
+    const direction = Math.atan2(b.y - a.y, b.x - a.x);
+    const candidate = direction + Math.round((angle - direction) / (Math.PI / 2)) * Math.PI / 2;
+    const error = Math.abs(candidate - angle);
+    if (error < best) { best = error; target = candidate; }
+  }
+  const dx = Math.cos(target) * distance / 2, dy = Math.sin(target) * distance / 2;
+  return [{...first, x:cx - dx, y:cy - dy}, {...last, x:cx + dx, y:cy + dy}];
+}
+export function correctShape(stroke: Stroke, references: Stroke[] = []): Stroke {
+  if (stroke.image) return stroke;
   const raw = stroke.points;
   const points =
     raw.length > 512
@@ -15,7 +37,7 @@ export function correctShape(stroke: Stroke): Stroke {
           (_, i) => raw[Math.round((i * (raw.length - 1)) / 511)],
         )
       : raw;
-  if (points.length < 3) return stroke;
+  if (points.length < 2) return stroke;
   const first = points[0],
     last = points.at(-1)!,
     total = length(points);
@@ -23,18 +45,20 @@ export function correctShape(stroke: Stroke): Stroke {
   const span = Math.hypot(last.x - first.x, last.y - first.y),
     pressure = points.reduce((s, p) => s + p.p, 0) / points.length;
   if (
-    span / total > 0.985 &&
+    span / total > 0.86 &&
+    points.reduce((sum, p) => sum + segmentDistance(p, first, last), 0) / points.length < Math.max(3, span * .04) &&
     points.every(
-      (p) => segmentDistance(p, first, last) < Math.max(2, span * 0.018),
+      (p) => segmentDistance(p, first, last) < Math.max(5, span * 0.085),
     )
   )
     return {
       ...stroke,
       shape: "line",
-      points: [
+      points: snapLine(
         { ...first, p: pressure },
         { ...last, p: pressure },
-      ],
+        references,
+      ),
     };
   const xs = points.map((p) => p.x),
     ys = points.map((p) => p.y),
@@ -42,7 +66,7 @@ export function correctShape(stroke: Stroke): Stroke {
     top = Math.min(...ys),
     w = Math.max(...xs) - left,
     h = Math.max(...ys) - top;
-  if (Math.min(w, h) < 24 || span > Math.min(w, h) * 0.23) return stroke;
+  if (Math.min(w, h) < 24 || span > Math.min(w, h) * 0.4) return stroke;
   // Fit a rotated bounding rectangle; corner and edge checks avoid turning circles into boxes.
   let fit:
     | {
@@ -90,12 +114,12 @@ export function correctShape(stroke: Stroke): Stroke {
     );
     if (
       min >= 24 &&
-      total / (2 * (f.w + f.h)) > 0.83 &&
-      total / (2 * (f.w + f.h)) < 1.2 &&
-      errors.reduce((a, b) => a + b, 0) / errors.length < min * 0.035 &&
-      Math.max(...errors) < min * 0.12 &&
+      total / (2 * (f.w + f.h)) > 0.74 &&
+      total / (2 * (f.w + f.h)) < 1.45 &&
+      errors.reduce((a, b) => a + b, 0) / errors.length < min * 0.075 &&
+      Math.max(...errors) < min * 0.2 &&
       corners.every((c) =>
-        f.points.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < min * 0.13),
+        f.points.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < min * 0.19),
       )
     ) {
       const c = Math.cos(f.angle),
@@ -129,14 +153,14 @@ export function correctShape(stroke: Stroke): Stroke {
     backtrack += Math.abs(d);
   }
   if (
-    radial.reduce((a, b) => a + b, 0) / radial.length < 0.09 &&
-    Math.max(...radial) < 0.25 &&
-    total / circumference > 0.83 &&
-    total / circumference < 1.2 &&
-    Math.abs(sweep) > 5.5 &&
-    backtrack < 7.3
+    radial.reduce((a, b) => a + b, 0) / radial.length < 0.16 &&
+    Math.max(...radial) < 0.38 &&
+    total / circumference > 0.74 &&
+    total / circumference < 1.45 &&
+    Math.abs(sweep) > 5.1 &&
+    backtrack < 8.8
   ) {
-    const circular = Math.abs(w - h) / Math.max(w, h) < 0.12,
+    const circular = Math.abs(w - h) / Math.max(w, h) < 0.2,
       rx = circular ? (w + h) / 4 : w / 2,
       ry = circular ? rx : h / 2;
     return {

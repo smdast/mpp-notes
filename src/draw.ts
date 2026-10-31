@@ -1,6 +1,25 @@
 import type { Page, Stroke } from "./model";
 import { isDarkColor, LIGHT_PAPER } from "./paper";
 import { inkImage } from "./images";
+export const PAPER_SPACING = 40;
+// Arc-length sampling keeps dots equally spaced, regardless of input speed.
+export function dotPoints(points: Stroke["points"], spacing: number): Stroke["points"] {
+  if (!points.length) return [];
+  const dots = [points[0]];
+  let remaining = Math.max(1, spacing);
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    const distance = Math.hypot(b.x - a.x, b.y - a.y);
+    let along = remaining;
+    while (along <= distance) {
+      const t = along / distance;
+      dots.push({x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, p: a.p + (b.p - a.p) * t});
+      along += Math.max(1, spacing);
+    }
+    remaining = along - distance;
+  }
+  return dots;
+}
 // Rounded quadratic centerline, rendered as a continuous pressure-sensitive outline.
 export function smoothPoints(points: Stroke["points"]): Stroke["points"] {
   if (points.length < 3) return points;
@@ -65,6 +84,17 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.globalAlpha = s.tool === "marker" ? 0.27 : 1;
+  if (s.dotted) {
+    ctx.beginPath();
+    for (const p of dotPoints(points, Math.max(4, s.width * 3))) {
+      const diameter = s.pressure === false ? s.width : s.width * (0.25 + p.p * .95);
+      ctx.moveTo(p.x + diameter / 2, p.y);
+      ctx.arc(p.x, p.y, diameter / 2, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
   if (s.shape || (s.tool === "marker" && !s.pressure)) {
     ctx.lineWidth =
       s.shape && s.tool === "pen"
@@ -138,7 +168,7 @@ export function drawPaper(
       ? "#e6e9e5"
       : "#dce5e9";
   ctx.lineWidth = 0.65;
-  const gap = 26;
+  const gap = PAPER_SPACING;
   ctx.beginPath();
   for (let y = gap; y < p.height; y += gap) {
     ctx.moveTo(0, y);

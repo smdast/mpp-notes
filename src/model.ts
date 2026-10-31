@@ -1,5 +1,6 @@
 export type Point = { x: number; y: number; p: number };
 export type Stroke = {
+  dotted?: boolean;
   // Image corners are top-left, top-right, bottom-right, bottom-left.
   image?: string;
   shape?: "line" | "rectangle" | "ellipse";

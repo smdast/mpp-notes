@@ -78,6 +78,7 @@ import {
 import "./style.css";
 import { FolderNav } from "./FolderNav";
 import { PWAControls } from "./PWAControls";
+import { clampZoom } from "./scrolling";
 import type { EraserMode } from "./editing";
 type Dialog = {
   kind: "new" | "rename" | "deleteNote" | "deletePage" | "help";
@@ -91,7 +92,7 @@ function App() {
   const dark = useTheme(preferences.theme);
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
-  const { width, pressure } = preferences.pens[preferences.activePen];
+  const { width, pressure, dotted } = preferences.pens[preferences.activePen];
   const [jump, setJump] = useState({ id: "", token: 0 });
 
   const [notes, setNotes] = useState<Note[]>([]),
@@ -926,6 +927,11 @@ function App() {
                   ))}
                 </select>
               </label>
+              <label className="width-select">
+                <select aria-label="線の種類" value={dotted ? "dotted" : "solid"} onChange={(e) => setPen({dotted:e.target.value === "dotted"})}>
+                  <option value="solid">実線</option><option value="dotted">点線</option>
+                </select>
+              </label>
               <span className="divider" />
               <div className="tool-group">
                 <button
@@ -1134,6 +1140,7 @@ function App() {
                     color={color}
                     width={width}
                     pressure={pressure}
+                    dotted={!!dotted}
                     shapeCorrection={preferences.shapeCorrection}
                     mouse={mouse}
                     eraserMode={eraserMode}
@@ -1149,14 +1156,16 @@ function App() {
                   <div className="floating-zoom">
                     <button
                       title="縮小"
-                      onClick={() => setZoom(Math.max(0.25, zoom - 0.1))}
+                      onClick={() => setZoom(clampZoom(zoom - 0.1))}
                     >
                       <Minus size={15} />
                     </button>
-                    <span>{Math.round(zoom * 100)}%</span>
+                    <select aria-label="表示倍率" value={Math.round(zoom * 100)} onChange={(e) => setZoom(clampZoom(Number(e.target.value) / 100))}>
+                      {[...new Set([25,50,70,100,150,200,300,400,600,800,Math.round(zoom*100)])].sort((a,b) => a-b).map((value) => <option key={value} value={value}>{value}%</option>)}
+                    </select>
                     <button
                       title="拡大"
-                      onClick={() => setZoom(Math.min(2.5, zoom + 0.1))}
+                      onClick={() => setZoom(clampZoom(zoom + 0.1))}
                     >
                       <Plus size={15} />
                     </button>
@@ -1169,7 +1178,7 @@ function App() {
                           setZoom(
                             Math.max(
                               0.25,
-                              Math.min(2.5, (el.clientWidth - 96) / page.width),
+                              clampZoom((el.clientWidth - 96) / page.width),
                             ),
                           );
                       }}

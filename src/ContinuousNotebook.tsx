@@ -10,7 +10,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Note, Page, Stroke } from "./model";
 import { ScrollMotion } from "./motion";
 import { pagePaperColor } from "./paper";
-import { zoomScrollTop } from "./scrolling";
+import { zoomScrollTop, clampZoom } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
@@ -26,6 +26,7 @@ type Props = {
   color: string;
   width: number;
   pressure: boolean;
+  dotted: boolean;
   shapeCorrection: boolean;
   mouse: boolean;
   eraserMode: EraserMode;
@@ -87,6 +88,7 @@ function PageSlot({
           color={props.color}
           width={props.width}
           pressure={props.pressure}
+          dotted={props.dotted}
           shapeCorrection={props.shapeCorrection}
           mouse={props.mouse}
           eraserMode={props.eraserMode}
@@ -272,10 +274,7 @@ export function ContinuousNotebook(props: Props) {
         setPull(swipe.current.distance);
       }
       if (distance && prev.distance) {
-        const next = Math.max(
-            0.25,
-            Math.min(2.5, (zoom * distance) / prev.distance),
-          ),
+        const next = clampZoom((zoom * distance) / prev.distance),
           r = v.getBoundingClientRect(),
           ax = x - r.left,
           ay = y - r.top,

@@ -1,4 +1,7 @@
 import type { Page } from "./model";
+export const MIN_ZOOM = 0.25;
+export const MAX_ZOOM = 8;
+export const clampZoom = (zoom: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
 export function zoomScrollTop(
   pages: Pick<Page, "height">[],
   from: number,

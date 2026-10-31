@@ -1,6 +1,7 @@
 export type PenId = "pen1" | "pen2" | "pen3" | "marker";
 export type Theme = "system" | "light" | "dark";
 export type PenSettings = {
+  dotted?: boolean;
   color: string;
   width: number;
   pressure: boolean;
@@ -39,6 +40,7 @@ export function readPreferences(value: unknown): Preferences {
     )
       base.pens[key] = {
         ...p,
+        dotted: p.dotted === true,
         customColor:
           typeof p.customColor === "boolean"
             ? p.customColor

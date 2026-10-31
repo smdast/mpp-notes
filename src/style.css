@@ -489,11 +489,11 @@ main {
   background-image:
     linear-gradient(#e8ece2 1px, transparent 1px),
     linear-gradient(90deg, #e8ece2 1px, transparent 1px);
-  background-size: 6px 6px;
+  background-size: 9px 9px;
 }
 .mini-paper.ruled {
   background-image: linear-gradient(#e7eae2 1px, transparent 1px);
-  background-size: 100% 6px;
+  background-size: 100% 9px;
 }
 .mini-paper > span:first-child {
   position: absolute;
@@ -646,7 +646,7 @@ main {
   border-radius: 4px;
   color: #829378;
 }
-.floating-zoom span {
+.floating-zoom select {
   font-size: 10px;
   min-width: 39px;
   text-align: center;
@@ -1862,7 +1862,7 @@ main {
   background: #203024;
   border-color: #3e5038;
 }
-[data-theme="dark"] .floating-zoom span,
+[data-theme="dark"] .floating-zoom select,
 [data-theme="dark"] .floating-zoom button {
   color: #d2dfc7;
 }
@@ -2114,11 +2114,7 @@ main {
   border-radius: 5px;
   font-size: 11px;
 }
-.drive-configure {
-  font-size: 10px;
-  text-decoration: underline;
-  padding: 8px 0;
-}
+
 .drive-message {
   background: #fff1df;
   color: #986b35 !important;

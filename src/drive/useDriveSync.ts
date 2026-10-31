@@ -23,8 +23,8 @@ type Props = {
 export function useDriveSync(props: Props) {
   const callbacks = useRef(props);
   callbacks.current = props;
-  const [clientId, setClientId] = useState(""),
-    [status, setStatus] = useState("未接続"),
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
+  const [status, setStatus] = useState("未接続"),
     [message, setMessage] = useState(""),
     [account, setAccount] = useState(""),
     [connected, setConnected] = useState(false),
@@ -38,9 +38,6 @@ export function useDriveSync(props: Props) {
     generation = useRef(0),
     retry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
-    void loadSetting<string>("google-client-id").then((value) =>
-      setClientId(value || import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID),
-    );
     return () => {
       generation.current++;
       clearTimeout(retry.current);
@@ -155,21 +152,6 @@ export function useDriveSync(props: Props) {
       window.removeEventListener("focus", wake);
     };
   }, [tick]);
-  async function configure(id: string) {
-    const clean = id.trim();
-    if (clean && !/^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(clean))
-      throw new Error(
-        "ウェブアプリ用のOAuthクライアントIDを入力してください。",
-      );
-    if (connected) throw new Error("設定を変える前に接続を解除してください。");
-    await saveSetting("google-client-id", clean);
-    setClientId(clean);
-    setMessage("");
-    if (clean)
-      void loadGoogleIdentity()
-        .then(() => setAuthReady(true))
-        .catch((error) => setMessage(error.message));
-  }
   function connect() {
     if (!authReady || !clientId || running.current) return;
     const epoch = ++generation.current;
@@ -227,7 +209,6 @@ export function useDriveSync(props: Props) {
     authReady,
     conflicts,
     working,
-    configure,
     connect,
     disconnect,
     sync: () => void tick(),

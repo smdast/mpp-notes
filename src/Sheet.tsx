@@ -30,6 +30,7 @@ type Props = {
   isActive: boolean;
   pdfDocument?: PDFDocumentProxy;
   pressure: boolean;
+  dotted: boolean;
   shapeCorrection: boolean;
   onActivate: () => void;
   zoom: number;
@@ -50,6 +51,7 @@ export function Sheet({
   isActive,
   pdfDocument,
   pressure,
+  dotted,
   shapeCorrection,
   onActivate,
   zoom,
@@ -496,6 +498,7 @@ export function Sheet({
         tool: tool === "marker" ? "marker" : "pen",
         color,
         pressure,
+        dotted,
         width: tool === "marker" ? width * 5 : width,
         points: [p],
       };
@@ -581,7 +584,7 @@ export function Sheet({
       working.current = [
         ...working.current,
         !cancel && shapeCorrection
-          ? correctShape(current.current)
+          ? correctShape(current.current, page.strokes)
           : current.current,
       ];
     current.current = null;
