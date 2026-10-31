@@ -8,6 +8,7 @@ import {
   type LibrarySnapshot,
 } from "./sync";
 import { loadSetting, saveSetting } from "../storage";
+import { DEFAULT_GOOGLE_CLIENT_ID } from "./config";
 type Props = {
   snapshot: LibrarySnapshot;
   ready: boolean;
@@ -38,7 +39,7 @@ export function useDriveSync(props: Props) {
     retry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     void loadSetting<string>("google-client-id").then((value) =>
-      setClientId(value || import.meta.env.VITE_GOOGLE_CLIENT_ID || ""),
+      setClientId(value || import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID),
     );
     return () => {
       generation.current++;

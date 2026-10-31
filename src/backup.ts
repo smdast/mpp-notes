@@ -18,8 +18,13 @@ export function makeBackup(notes: Note[], folders: string[] = []) {
   return zipSync(files);
 }
 const finite = (x: unknown) => typeof x === "number" && Number.isFinite(x);
-function validStroke(s: Stroke) {
+export function validStroke(s: Stroke) {
   return (
+    !!s &&
+    (s.image === undefined ||
+      (typeof s.image === "string" && s.image.length <= 30_000_000 &&
+        /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(s.image) &&
+        Array.isArray(s.points) && s.points.length === 4)) &&
     (s.shape === undefined ||
       ["line", "rectangle", "ellipse"].includes(s.shape)) &&
     (s.pressure === undefined || typeof s.pressure === "boolean") &&

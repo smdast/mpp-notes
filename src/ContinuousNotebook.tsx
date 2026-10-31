@@ -11,12 +11,12 @@ import type { Note, Page, Stroke } from "./model";
 import { ScrollMotion } from "./motion";
 import { pagePaperColor } from "./paper";
 import { zoomScrollTop } from "./scrolling";
-import { Sheet, type Tool, type SelectionActions } from "./Sheet";
+import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
 type Props = {
   note: Note;
-  onSelectionChange: (value: SelectionActions | null, pageId: string) => void;
+  onPasted: () => void;
   dark: boolean;
   activePageId: string;
   jump: { id: string; token: number };
@@ -78,7 +78,7 @@ function PageSlot({
       {visible || pinned ? (
         <Sheet
           page={page}
-          onSelectionChange={props.onSelectionChange}
+          onPasted={props.onPasted}
           paperColor={pagePaperColor(page, props.dark)}
           isActive={props.activePageId === page.id}
           pdfDocument={document}

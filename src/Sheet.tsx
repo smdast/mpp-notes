@@ -19,18 +19,13 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import { correctShape } from "./shapes";
 import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
-export type SelectionActions = {
-  pageId: string;
-  count: number;
-  rotate: () => void;
-  flip: () => void;
-  remove: () => void;
-  clear: () => void;
-};
+import { SelectionPopup } from "./SelectionPopup";
+import { cloneStrokes, decodeStrokes, editableTarget, localStrokes, rememberStrokes } from "./clipboard";
+import { imageStroke, prepareImages } from "./images";
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
   page: Page;
-  onSelectionChange: (value: SelectionActions | null, pageId: string) => void;
+  onPasted: () => void;
   paperColor: string;
   isActive: boolean;
   pdfDocument?: PDFDocumentProxy;
@@ -50,7 +45,7 @@ type Props = {
 };
 export function Sheet({
   page,
-  onSelectionChange,
+  onPasted,
   paperColor,
   isActive,
   pdfDocument,
@@ -82,8 +77,15 @@ export function Sheet({
     moving = useRef<Point | null>(null),
     original = useRef<Stroke[]>([]);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [selectionRevision, refreshSelection] = useState(0),
+  const [, refreshSelection] = useState(0),
     [editingSelection, setEditingSelection] = useState(false);
+  const alive = useRef(true), pasting = useRef(false);
+  const live = useRef({page, isActive, onCommit, onPasted, onError, onWriting});
+  live.current = {page, isActive, onCommit, onPasted, onError, onWriting};
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const transform = useRef<{
     kind: "scale" | "rotate";
     start: Point;
@@ -121,32 +123,112 @@ export function Sheet({
     refreshSelection((v) => v + 1);
     paint();
   }
-  const selectionHandlers = useRef({
-    applyTransform,
-    removeSelection,
-    clearSelection,
-  });
-  selectionHandlers.current = {
-    applyTransform,
-    removeSelection,
-    clearSelection,
-  };
+  function selectedStrokes() { return page.strokes.filter((s) => selected.current.has(s.id)); }
+  function insert(strokes: Stroke[], paste = false) {
+    const latest = live.current;
+    if (!alive.current || !latest.isActive || active.current !== null) return;
+    let additions = cloneStrokes(strokes, latest.page);
+    const ids = new Set(additions.map((s) => s.id));
+    const bounds = selectionBounds(additions, ids);
+    const rect = ink.current?.getBoundingClientRect();
+    const viewport = ink.current?.closest(".viewport")?.getBoundingClientRect();
+    if (paste && bounds && rect && viewport) {
+      const x = (Math.max(rect.left, viewport.left) + Math.min(rect.right, viewport.right)) / 2;
+      const y = (Math.max(rect.top, viewport.top) + Math.min(rect.bottom, viewport.bottom)) / 2;
+      additions = moveSelection(additions, ids,
+        (x - rect.left) / zoom - (bounds.left + bounds.right) / 2,
+        (y - rect.top) / zoom - (bounds.top + bounds.bottom) / 2);
+    }
+    selected.current = ids;
+    working.current = [...latest.page.strokes, ...additions];
+    latest.onCommit(working.current);
+    latest.onPasted();
+    refreshSelection((v) => v + 1);
+    paint();
+  }
+  async function copySelection(cut = false) {
+    const strokes = selectedStrokes();
+    if (!strokes.length) return;
+    const text = rememberStrokes(strokes);
+    const ids = new Set(strokes.map((s) => s.id));
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      onError(cut ? "クリップボードへ書き込めないため切り取りませんでした。Ctrl+Xをお試しください。" : "アプリ内にコピーしました。ほかのアプリへのコピーにはクリップボードの許可が必要です。");
+      if (cut) return;
+    }
+    if (cut && alive.current && live.current.isActive && active.current === null) {
+      working.current = live.current.page.strokes.filter((s) => !ids.has(s.id));
+      live.current.onCommit(working.current);
+      clearSelection();
+    }
+  }
+  function canPaste(target: EventTarget | null) {
+    return live.current.isActive && !editableTarget(target) && active.current === null &&
+      !document.querySelector('.modal-backdrop,.busy-overlay');
+  }
+  async function pasteContent(strokes?: Stroke[] | null, image?: Blob) {
+    if (pasting.current || !canPaste(null)) return;
+    pasting.current = true;
+    onWriting(true);
+    try {
+      const additions = image ? [await imageStroke(image, live.current.page)] : strokes;
+      if (!additions?.length) throw new Error("画像またはMPP Notesでコピーしたストロークを貼り付けてください。");
+      await prepareImages(additions);
+      insert(additions, true);
+    } catch (e) {
+      if (alive.current) live.current.onError(e instanceof Error ? e.message : "貼り付けできませんでした。");
+    } finally {
+      pasting.current = false;
+      if (alive.current) live.current.onWriting(false);
+    }
+  }
+  async function pasteFromButton() {
+    if (!canPaste(null)) return;
+    try {
+      const items = await navigator.clipboard.read();
+      if (!items.length && localStrokes()) { await pasteContent(localStrokes()); return; }
+      // Prefer our editable strokes to a raster clipboard representation.
+      for (const item of items) if (item.types.includes("text/plain")) {
+        const strokes = decodeStrokes(await (await item.getType("text/plain")).text());
+        if (strokes) { await pasteContent(strokes); return; }
+      }
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (type) { await pasteContent(null, await item.getType(type)); return; }
+      }
+      onError("画像またはMPP Notesでコピーしたストロークを貼り付けてください。");
+    } catch {
+      const strokes = localStrokes();
+      if (strokes) await pasteContent(strokes);
+      else onError("貼り付けの許可を確認するか、Ctrl+Vで貼り付けてください。");
+    }
+  }
   useEffect(() => {
-    const value =
-      isActive && tool === "lasso" && selected.current.size && !editingSelection
-        ? {
-            pageId: page.id,
-            count: selected.current.size,
-            rotate: () =>
-              selectionHandlers.current.applyTransform(1, 1, Math.PI / 2),
-            flip: () => selectionHandlers.current.applyTransform(-1, 1, 0),
-            remove: () => selectionHandlers.current.removeSelection(),
-            clear: () => selectionHandlers.current.clearSelection(),
-          }
-        : null;
-    onSelectionChange(value, page.id);
-  }, [isActive, tool, page.strokes, selectionRevision, editingSelection]);
-  useEffect(() => () => onSelectionChange(null, page.id), []);
+    const copy = (e: ClipboardEvent) => {
+      if (!canPaste(e.target) || tool !== "lasso" || !selected.current.size || !e.clipboardData) return;
+      e.clipboardData.setData("text/plain", rememberStrokes(selectedStrokes()));
+      e.preventDefault();
+      if (e.type === "cut") removeSelection();
+    };
+    const paste = (e: ClipboardEvent) => {
+      if (!canPaste(e.target) || !e.clipboardData) return;
+      const strokes = decodeStrokes(e.clipboardData.getData("text/plain"));
+      const image = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"))?.getAsFile();
+      if (!strokes && !image) return;
+      e.preventDefault();
+      void pasteContent(strokes, strokes ? undefined : image || undefined);
+    };
+    const button = () => { if (isActive) void pasteFromButton(); };
+    window.addEventListener("copy", copy);
+    window.addEventListener("cut", copy);
+    window.addEventListener("paste", paste);
+    window.addEventListener("mpp-paste", button);
+    return () => {
+      window.removeEventListener("copy", copy); window.removeEventListener("cut", copy);
+      window.removeEventListener("paste", paste); window.removeEventListener("mpp-paste", button);
+    };
+  }, [isActive, tool, page.strokes, zoom]);
   useEffect(() => {
     if (!isActive) clearSelection();
   }, [isActive]);
@@ -156,8 +238,8 @@ export function Sheet({
         !isActive ||
         tool !== "lasso" ||
         !selected.current.size ||
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLSelectElement
+        editableTarget(e.target) ||
+        document.querySelector('.modal-backdrop,.busy-overlay')
       )
         return;
       if (e.key === "Delete" || e.key === "Backspace") {
@@ -255,6 +337,12 @@ export function Sheet({
     refreshSelection((v) => v + 1);
     paint();
   }, [page.strokes, page.id, pixels, tool]);
+  useEffect(() => {
+    let disposed = false;
+    void prepareImages(page.strokes).then(() => { if (!disposed) paint(); })
+      .catch(() => { if (!disposed) onError("保存された画像を読み込めません。"); });
+    return () => { disposed = true; };
+  }, [page.strokes]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
@@ -501,6 +589,7 @@ export function Sheet({
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
   }
+  const bounds = selectionBounds(page.strokes, selected.current);
   return (
     <div
       className="sheet"
@@ -538,6 +627,14 @@ export function Sheet({
         style={{ width: eraserSize, height: eraserSize, display: "none" }}
       />
       {pdfLoading && <div className="page-loading">PDFを読み込み中…</div>}
+      {isActive && tool === "lasso" && bounds && !editingSelection && (
+        <SelectionPopup canvas={ink} bounds={bounds} zoom={zoom}
+          onCopy={() => void copySelection()}
+          onCut={() => void copySelection(true)}
+          onDuplicate={() => insert(selectedStrokes())}
+          onRotate={() => applyTransform(1, 1, Math.PI / 2)}
+          onDelete={removeSelection}/>
+      )}
     </div>
   );
 }

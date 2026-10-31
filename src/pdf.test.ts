@@ -1,5 +1,5 @@
 import { it, expect, vi } from "vitest";
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, Image } from "@napi-rs/canvas";
 import { PDFDocument, degrees } from "pdf-lib";
 import { importPDF, overlayPlacement, pdfjs, exportPDF } from "./pdf";
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -54,6 +54,9 @@ it("exports strokes at the same visible location for all rotations and crop boxe
     p.setRotation(degrees(rotation));
   }
   const note = await importPDF(await pdf.save(), "配置確認");
+  const stamp = createCanvas(10, 10);
+  stamp.getContext("2d").fillStyle = "#00ff00";
+  stamp.getContext("2d").fillRect(0, 0, 10, 10);
   for (const p of note.pages)
     p.strokes = [
       {
@@ -66,8 +69,14 @@ it("exports strokes at the same visible location for all rotations and crop boxe
           { x: 90, y: 50, p: 1 },
         ],
       },
+      {
+        id: "image", tool: "pen", color: "#000000", width: .05,
+        image: stamp.toDataURL("image/png"),
+        points: [{x:100,y:80,p:.5},{x:130,y:80,p:.5},{x:130,y:110,p:.5},{x:100,y:110,p:.5}],
+      },
     ];
   vi.stubGlobal("document", { createElement: () => createCanvas(1, 1) });
+  vi.stubGlobal("Image", Image);
   let output: Uint8Array;
   try {
     output = await exportPDF(note);
@@ -90,6 +99,9 @@ it("exports strokes at the same visible location for all rotations and crop boxe
       const pixel = canvas.getContext("2d").getImageData(60, 50, 1, 1).data;
       expect(pixel[0]).toBeGreaterThan(200);
       expect(pixel[1]).toBeLessThan(80);
+      const pastedImage = canvas.getContext("2d").getImageData(115, 95, 1, 1).data;
+      expect(pastedImage[1]).toBeGreaterThan(200);
+      expect(pastedImage[0]).toBeLessThan(80);
       const blank = canvas.getContext("2d").getImageData(140, 130, 1, 1).data;
       expect(blank[1]).toBeGreaterThan(240);
     }

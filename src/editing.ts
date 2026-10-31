@@ -10,6 +10,11 @@ export function erase(
   let changed = false;
   const result: Stroke[] = [];
   for (const stroke of strokes) {
+    // Images are selected/deleted as objects, never split into pen fragments.
+    if (stroke.image) {
+      result.push(stroke);
+      continue;
+    }
     if (!hits(stroke, a, b, radius)) {
       result.push(stroke);
       continue;
@@ -72,6 +77,7 @@ export function selectLasso(strokes: Stroke[], polygon: Point[]) {
       .filter(
         (s) =>
           s.points.some((p) => inside(p, polygon)) ||
+          (!!s.image && polygon.some((p) => inside(p, s.points))) ||
           polygon.some((a, i) =>
             hits(s, a, polygon[(i + 1) % polygon.length], 0),
           ),
