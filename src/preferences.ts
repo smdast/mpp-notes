@@ -1,0 +1,43 @@
+export type PenId = "pen1" | "pen2" | "pen3" | "marker";
+export type Theme = "system" | "light" | "dark";
+export type PenSettings = { color: string; width: number; pressure: boolean };
+export type Preferences = {
+  theme: Theme;
+  pens: Record<PenId, PenSettings>;
+  activePen: PenId;
+  shapeCorrection: boolean;
+};
+export const defaultPreferences = (): Preferences => ({
+  theme: "system",
+  pens: {
+    pen1: { color: "#243d35", width: 2.5, pressure: true },
+    pen2: { color: "#376fac", width: 2.5, pressure: true },
+    pen3: { color: "#bd6263", width: 4, pressure: true },
+    marker: { color: "#bd8d39", width: 4, pressure: false },
+  },
+  activePen: "pen1",
+  shapeCorrection: true,
+});
+export function readPreferences(value: unknown): Preferences {
+  const base = defaultPreferences();
+  if (!value || typeof value !== "object") return base;
+  const v = value as Partial<Preferences>;
+  if (v.theme && ["system", "light", "dark"].includes(v.theme))
+    base.theme = v.theme;
+  for (const key of Object.keys(base.pens) as PenId[]) {
+    const p = v.pens?.[key];
+    if (
+      p &&
+      /^#[\da-f]{6}$/i.test(p.color) &&
+      [1, 2.5, 4, 6, 10].includes(p.width) &&
+      typeof p.pressure === "boolean"
+    )
+      base.pens[key] = { ...p };
+  }
+  if (v.activePen && v.activePen in base.pens) base.activePen = v.activePen;
+  if (typeof v.shapeCorrection === "boolean")
+    base.shapeCorrection = v.shapeCorrection;
+  return base;
+}
+export const pressureValue = (value: number, enabled: boolean) =>
+  enabled ? Math.max(0.05, Math.min(1, value)) : 0.75 / 0.95;

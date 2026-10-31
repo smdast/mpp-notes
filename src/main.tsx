@@ -42,6 +42,8 @@ import {
 } from "./model";
 import {
   loadNotes,
+  loadPreferences,
+  savePreferences,
   loadFolders,
   saveFolders,
   saveNote,
@@ -52,7 +54,18 @@ import {
 } from "./storage";
 import { makeBackup, readBackupBundle, download } from "./backup";
 import { importPDF, exportPDF } from "./pdf";
-import { Sheet, type Tool } from "./Sheet";
+import type { Tool } from "./Sheet";
+import { ContinuousNotebook } from "./ContinuousNotebook";
+import { Library } from "./Library";
+import { ThemeControl, useTheme } from "./ThemeControl";
+import { normalizeFolders, relocateFolder } from "./folders";
+import {
+  defaultPreferences,
+  readPreferences,
+  type Preferences,
+  type PenId,
+  type PenSettings,
+} from "./preferences";
 import "./style.css";
 import { FolderNav } from "./FolderNav";
 import { PWAControls } from "./PWAControls";
@@ -62,17 +75,24 @@ type Dialog = {
   value?: string;
 };
 function App() {
+  const [view, setView] = useState<"library" | "editor">("library");
+  const [preferences, setPreferences] =
+    useState<Preferences>(defaultPreferences);
+  useTheme(preferences.theme);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const { color, width, pressure } = preferences.pens[preferences.activePen];
+  const [jump, setJump] = useState({ id: "", token: 0 });
+
   const [notes, setNotes] = useState<Note[]>([]),
     [noteId, setNoteId] = useState(""),
     [pageId, setPageId] = useState(""),
     [ready, setReady] = useState(false),
     [blocked, setBlocked] = useState(false);
   const [tool, setTool] = useState<Tool>("pen"),
-    [color, setColor] = useState("#243d35"),
-    [width, setWidth] = useState(2.5),
     [zoom, setZoom] = useState(0.7),
     [mouse, setMouse] = useState(false),
-    [sidebar, setSidebar] = useState(true);
+    [sidebar, setSidebar] = useState(() => window.innerWidth > 650);
   const [saveStatus, setSaveStatus] = useState("保存済み"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(""),
@@ -93,6 +113,64 @@ function App() {
   const note = notes.find((n) => n.id === noteId),
     page = note?.pages.find((p) => p.id === pageId) || note?.pages[0],
     pageIndex = note && page ? note.pages.indexOf(page) : 0;
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  function retrySave() {
+    failed.current = false;
+    enqueue(async () => {
+      await saveSnapshot(notes, folders);
+      await savePreferences(preferencesRef.current);
+    });
+    setError("");
+  }
+  function library() {
+    setView("library");
+    window.location.hash = "/library";
+  }
+  function goPage(id: string) {
+    setPageId(id);
+    setJump((prev) => ({ id, token: prev.token + 1 }));
+  }
+  function storePreferences(next: Preferences) {
+    preferencesRef.current = next;
+    setPreferences(next);
+    enqueue(() => savePreferences(next));
+  }
+  function setPen(patch: Partial<PenSettings>) {
+    const prev = preferencesRef.current;
+    storePreferences({
+      ...prev,
+      pens: {
+        ...prev.pens,
+        [prev.activePen]: { ...prev.pens[prev.activePen], ...patch },
+      },
+    });
+  }
+  function setColor(color: string) {
+    setPen({ color });
+  }
+  function setWidth(width: number) {
+    setPen({ width });
+  }
+  function choosePen(id: PenId) {
+    storePreferences({ ...preferencesRef.current, activePen: id });
+    setTool(id === "marker" ? "marker" : "pen");
+  }
+  useEffect(() => {
+    const route = () => {
+      if (!ready) return;
+      const match = window.location.hash.match(/^#\/note\/(.+)$/);
+      const found = match && notesRef.current.find((n) => n.id === match[1]);
+      if (found) {
+        setNoteId(found.id);
+        goPage(found.pages[0].id);
+        setView("editor");
+      } else setView("library");
+    };
+    window.addEventListener("hashchange", route);
+    route();
+    return () => window.removeEventListener("hashchange", route);
+  }, [ready]);
   const history = page ? histories.current.get(page.id) : undefined;
   function enqueue(op: () => Promise<unknown>) {
     pending.current++;
@@ -120,16 +198,21 @@ function App() {
     let release: () => void = () => {};
     const init = async () => {
       try {
-        const [found, storedFolders] = await Promise.all([
+        const [found, storedFolders, storedPreferences] = await Promise.all([
           loadNotes(),
           loadFolders(),
+          loadPreferences(),
         ]);
-        setFolders([
-          ...new Set([
+        setFolders(
+          normalizeFolders([
             ...storedFolders,
             ...found.flatMap((n) => (n.folder ? [n.folder] : [])),
           ]),
-        ]);
+        );
+        const pref = readPreferences(storedPreferences);
+        setPreferences(pref);
+        preferencesRef.current = pref;
+        setTool(pref.activePen === "marker" ? "marker" : "pen");
         if (!alive) return;
         if (found.length) {
           setNotes(found.sort((a, b) => b.updated - a.updated));
@@ -193,17 +276,18 @@ function App() {
       pages: note.pages.map((p) => (p.id === next.id ? next : p)),
     });
   }
-  function commit(strokes: Stroke[]) {
-    if (!page || strokes === page.strokes) return;
+  function commit(strokes: Stroke[], targetId = page?.id) {
+    const target = note?.pages.find((p) => p.id === targetId);
+    if (!target || strokes === target.strokes) return;
     histories.current.set(
-      page.id,
+      target.id,
       record(
-        histories.current.get(page.id) || { past: [], future: [] },
-        page.strokes,
+        histories.current.get(target.id) || { past: [], future: [] },
+        target.strokes,
       ),
     );
     setHistoryRevision((v) => v + 1);
-    updatePage({ ...page, strokes });
+    updatePage({ ...target, strokes });
   }
   function undo(redo = false) {
     if (!page) return;
@@ -240,15 +324,27 @@ function App() {
           l: "lasso",
           v: "hand",
         };
-        if (t[e.key.toLowerCase()]) setTool(t[e.key.toLowerCase()]);
+        if (e.key.toLowerCase() === "p")
+          choosePen(
+            preferencesRef.current.activePen === "marker"
+              ? "pen1"
+              : preferencesRef.current.activePen,
+          );
+        else if (e.key.toLowerCase() === "h") choosePen("marker");
+        else if (t[e.key.toLowerCase()]) setTool(t[e.key.toLowerCase()]);
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [page, dialog, busy, historyRevision]);
   function select(n: Note) {
+    // Async imports can navigate before React commits their new note list.
+    if (!notesRef.current.some((existing) => existing.id === n.id))
+      notesRef.current = [n, ...notesRef.current];
     setNoteId(n.id);
-    setPageId(n.pages[0].id);
+    goPage(n.pages[0].id);
+    setView("editor");
+    window.location.hash = "/note/" + n.id;
     setMenu(false);
   }
   async function run(label: string, action: () => Promise<void>) {
@@ -286,7 +382,7 @@ function App() {
     await run("バックアップを復元中", async () => {
       const bundle = readBackupBundle(new Uint8Array(await file.arrayBuffer()));
       const restored = bundle.notes;
-      const mergedFolders = [...new Set([...folders, ...bundle.folders])];
+      const mergedFolders = normalizeFolders([...folders, ...bundle.folders]);
       for (const n of restored)
         if (n.pdf) {
           const verified = await importPDF(n.pdf, n.title);
@@ -316,16 +412,19 @@ function App() {
       const rest = notes.filter((n) => n.id !== note.id);
       setNotes(rest);
       enqueue(() => deleteNote(note.id));
-      if (rest[0]) select(rest[0]);
-      else {
+      if (rest[0]) {
+        setNoteId(rest[0].id);
+        setPageId(rest[0].pages[0].id);
+      } else {
         setNoteId("");
         setPageId("");
       }
+      library();
     }
     if (dialog.kind === "deletePage" && note && page && note.pages.length > 1) {
       const pages = note.pages.filter((p) => p.id !== page.id);
       updateNote({ ...note, pages });
-      setPageId(pages[Math.max(0, pageIndex - 1)].id);
+      goPage(pages[Math.max(0, pageIndex - 1)].id);
       histories.current.delete(page.id);
     }
     setDialog(null);
@@ -337,26 +436,29 @@ function App() {
     const pages = [...note.pages];
     [pages[index], pages[pageIndex]] = [pages[pageIndex], pages[index]];
     updateNote({ ...note, pages });
+    if (page) goPage(page.id);
   }
   function addPage() {
     if (!note) return;
     const next = newPage();
     updateNote({ ...note, pages: [...note.pages, next] });
-    setPageId(next.id);
+    goPage(next.id);
   }
   function storeFolders(next: string[]) {
-    setFolders(next);
-    enqueue(() => saveFolders(next));
+    const normalized = normalizeFolders(next);
+    setFolders(normalized);
+    enqueue(() => saveFolders(normalized));
   }
   function changeFolder(from: string, to?: string) {
-    const next = folders.flatMap((f) => (f === from ? (to ? [to] : []) : [f]));
-    const changed = notes.map((n) =>
-      n.folder === from ? { ...n, folder: to, updated: Date.now() } : n,
-    );
-    setNotes(changed);
-    setFolders(next);
-    setFolder(to || "");
-    enqueue(() => saveSnapshot(changed, next));
+    try {
+      const result = relocateFolder(folders, notes, from, to);
+      setNotes(result.notes);
+      setFolders(result.folders);
+      setFolder(to || "*");
+      enqueue(() => saveSnapshot(result.notes, result.folders));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "フォルダーを変更できません。");
+    }
   }
   const colors = [
     "#243d35",
@@ -367,555 +469,626 @@ function App() {
     "#8466a5",
   ];
   return (
-    <div className={"app " + (!sidebar ? "collapsed" : "")}>
-      <aside className="sidebar">
-        <a className="brand" href="./">
-          <span className="brand-icon">
-            <PenLine size={21} />
-          </span>
-          <span>
-            MPP <strong>Notes</strong>
-            <small>書く、考える。</small>
-          </span>
-        </a>
-        <button
-          className="new-note"
-          disabled={!ready}
-          onClick={() => setDialog({ kind: "new", value: "" })}
-        >
-          <Plus size={18} />
-          新しいノート
-        </button>
-        <div className="section-heading">
-          ライブラリ <span>{notes.length}</span>
-        </div>
-        <FolderNav
-          folders={folders}
-          notes={notes}
-          selected={folder}
-          onSelect={setFolder}
-          onCreate={(name) => {
-            storeFolders([...folders, name]);
-            setFolder(name);
-          }}
-          onRename={(from, to) => changeFolder(from, to)}
-          onDelete={(name) => changeFolder(name)}
-        />
-        <nav className="notebooks" aria-label="ノート一覧">
-          {notes
-            .filter((n) => folder === "*" || (n.folder || "") === folder)
-            .map((n) => (
-              <button
-                key={n.id}
-                className={"notebook " + (n.id === noteId ? "selected" : "")}
-                onClick={() => select(n)}
-              >
-                <span className={"book-icon " + (n.pdf ? "pdf" : "")}>
-                  <BookOpen size={17} />
-                </span>
-                <span className="notebook-text">
-                  {n.title}
-                  <small>
-                    {n.pdf ? "PDF · " : ""}
-                    {n.pages.length} ページ
-                  </small>
-                </span>
-                {n.id === noteId && <span className="active-dot" />}
-              </button>
-            ))}
-        </nav>
-        <button
-          className="import-button"
-          disabled={!ready}
-          onClick={() => pdfInput.current?.click()}
-        >
-          <FileUp size={17} />
-          PDFを取り込む
-        </button>
-        <PWAControls
-          canReload={() =>
-            pending.current === 0 && !failed.current && !writing.current
-          }
-        />
-        <div className="sidebar-footer">
-          <div>
-            <ShieldCheck size={17} />
+    <div className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
+      {view === "library" && (
+        <aside className="sidebar">
+          <a className="brand" href="./">
+            <span className="brand-icon">
+              <PenLine size={21} />
+            </span>
             <span>
-              あなたの端末に保存<small>ノートは外部に送信されません</small>
+              MPP <strong>Notes</strong>
+              <small>書く、考える。</small>
             </span>
+          </a>
+          <button
+            className="new-note"
+            disabled={!ready}
+            onClick={() => setDialog({ kind: "new", value: "" })}
+          >
+            <Plus size={18} />
+            新しいノート
+          </button>
+          <div className="section-heading">
+            ライブラリ <span>{notes.length}</span>
           </div>
-          <div className="backup-actions">
-            <button
-              disabled={!ready}
-              onClick={() =>
-                void run("バックアップを作成中", async () =>
-                  download(
-                    makeBackup(notes, folders),
-                    `mpp-notes-${new Date().toISOString().slice(0, 10)}.zip`,
-                    "application/zip",
-                  ),
-                )
-              }
-            >
-              <Download size={14} />
-              バックアップ
-            </button>
-            <button
-              disabled={!ready}
-              onClick={() => backupInput.current?.click()}
-            >
-              <Upload size={14} />
-              復元
-            </button>
+          <FolderNav
+            folders={folders}
+            notes={notes}
+            selected={folder}
+            onSelect={setFolder}
+            onCreate={(name) => {
+              storeFolders([...folders, name]);
+              setFolder(name);
+            }}
+            onRename={(from, to) => changeFolder(from, to)}
+            onDelete={(name) => changeFolder(name)}
+          />
+          <button
+            className="import-button"
+            disabled={!ready}
+            onClick={() => pdfInput.current?.click()}
+          >
+            <FileUp size={17} />
+            PDFを取り込む
+          </button>
+          <PWAControls
+            canReload={() =>
+              pending.current === 0 && !failed.current && !writing.current
+            }
+          />
+          <div className="sidebar-footer">
+            <div>
+              <ShieldCheck size={17} />
+              <span>
+                あなたの端末に保存<small>ノートは外部に送信されません</small>
+              </span>
+            </div>
+            <div className="backup-actions">
+              <button
+                disabled={!ready}
+                onClick={() =>
+                  void run("バックアップを作成中", async () =>
+                    download(
+                      makeBackup(notes, folders),
+                      `mpp-notes-${new Date().toISOString().slice(0, 10)}.zip`,
+                      "application/zip",
+                    ),
+                  )
+                }
+              >
+                <Download size={14} />
+                バックアップ
+              </button>
+              <button
+                disabled={!ready}
+                onClick={() => backupInput.current?.click()}
+              >
+                <Upload size={14} />
+                復元
+              </button>
+            </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+      )}
       <main>
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              className="icon-button sidebar-toggle"
-              title={sidebar ? "サイドバーを閉じる" : "サイドバーを開く"}
-              onClick={() => setSidebar(!sidebar)}
-            >
-              {sidebar ? (
-                <PanelLeftClose size={18} />
-              ) : (
-                <PanelLeftOpen size={18} />
-              )}
-            </button>
-            <span className="breadcrumb-library">
-              {note?.folder || "未分類"} <ChevronRight size={13} />
-            </span>
-            <strong>{note?.title || "ノートをはじめよう"}</strong>
-            {note && (
-              <div className="menu-wrap">
+        {view === "library" ? (
+          <Library
+            themeControl={
+              <ThemeControl
+                theme={preferences.theme}
+                onChange={(theme) =>
+                  storePreferences({ ...preferencesRef.current, theme })
+                }
+              />
+            }
+            onToggleSidebar={() => setSidebar(!sidebar)}
+            notes={notes}
+            folders={folders}
+            folder={folder}
+            ready={ready}
+            onFolder={setFolder}
+            onOpen={select}
+            onRename={(n) => {
+              setNoteId(n.id);
+              setDialog({ kind: "rename", value: n.title });
+            }}
+            onDelete={(n) => {
+              setNoteId(n.id);
+              setDialog({ kind: "deleteNote" });
+            }}
+            onMove={(n, f) => updateNote({ ...n, folder: f || undefined })}
+            onNew={() => setDialog({ kind: "new", value: "" })}
+            onImport={() => pdfInput.current?.click()}
+            error={error}
+            onDismiss={() => setError("")}
+            onRetry={retrySave}
+          />
+        ) : (
+          <>
+            <header className="topbar">
+              <div className="breadcrumb">
                 <button
-                  className="icon-button"
-                  title="ノートの操作"
-                  onClick={() => setMenu(!menu)}
+                  className="library-back"
+                  aria-label="ノート管理へ戻る"
+                  title="ノート管理へ戻る"
+                  onClick={library}
                 >
-                  <MoreHorizontal size={18} />
+                  <BookOpen size={18} />
+                  <span>ノート管理</span>
                 </button>
-                {menu && (
-                  <div className="dropdown">
-                    <label className="folder-move">
-                      フォルダーへ移動
-                      <select
-                        aria-label="ノートのフォルダー"
-                        value={note.folder || ""}
-                        onChange={(e) => {
-                          updateNote({
-                            ...note,
-                            folder: e.target.value || undefined,
-                          });
-                          setFolder(e.target.value);
-                          setMenu(false);
-                        }}
-                      >
-                        <option value="">未分類</option>
-                        {folders.map((f) => (
-                          <option key={f} value={f}>
-                            {f}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                <span className="breadcrumb-library">
+                  {note?.folder || "未分類"} <ChevronRight size={13} />
+                </span>
+                <strong>{note?.title || "ノートをはじめよう"}</strong>
+                {note && (
+                  <div className="menu-wrap">
                     <button
-                      onClick={() => {
-                        setDialog({ kind: "rename", value: note.title });
-                        setMenu(false);
-                      }}
+                      className="icon-button"
+                      title="ノートの操作"
+                      onClick={() => setMenu(!menu)}
                     >
-                      名前を変更
+                      <MoreHorizontal size={18} />
                     </button>
-                    <button
-                      className="danger"
-                      onClick={() => {
-                        setDialog({ kind: "deleteNote" });
-                        setMenu(false);
-                      }}
-                    >
-                      ノートを削除
-                    </button>
+                    {menu && (
+                      <div className="dropdown">
+                        <label className="folder-move">
+                          フォルダーへ移動
+                          <select
+                            aria-label="ノートのフォルダー"
+                            value={note.folder || ""}
+                            onChange={(e) => {
+                              updateNote({
+                                ...note,
+                                folder: e.target.value || undefined,
+                              });
+                              setFolder(e.target.value);
+                              setMenu(false);
+                            }}
+                          >
+                            <option value="">未分類</option>
+                            {folders.map((f) => (
+                              <option key={f} value={f}>
+                                {f}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          onClick={() => {
+                            setDialog({ kind: "rename", value: note.title });
+                            setMenu(false);
+                          }}
+                        >
+                          名前を変更
+                        </button>
+                        <button
+                          className="danger"
+                          onClick={() => {
+                            setDialog({ kind: "deleteNote" });
+                            setMenu(false);
+                          }}
+                        >
+                          ノートを削除
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-          <div className="top-actions">
-            <span
-              className={
-                "save-status " + (saveStatus === "保存失敗" ? "failed" : "")
-              }
-              role="status"
-            >
-              {saveStatus === "保存中…" ? (
-                <LoaderCircle size={13} className="spin" />
-              ) : (
-                <Check size={14} />
-              )}{" "}
-              {saveStatus}
-            </span>
-            <button
-              className="export-button"
-              disabled={!note || !!busy}
-              onClick={() =>
-                note &&
-                void run("PDFを書き出し中", async () =>
-                  download(
-                    await exportPDF(note),
-                    `${note.title.replace(/[\\/:*?"<>|]/g, "_")}.pdf`,
-                    "application/pdf",
-                  ),
-                )
-              }
-            >
-              <Download size={15} />
-              <span>PDF書き出し</span>
-            </button>
-            <button
-              title="使い方"
-              className="icon-button"
-              onClick={() => setDialog({ kind: "help" })}
-            >
-              <HelpCircle size={18} />
-            </button>
-          </div>
-        </header>
-        <div className="toolbar">
-          {tool === "eraser" && (
-            <div className="eraser-options">
-              <select
-                aria-label="消しゴムの種類"
-                value={eraserMode}
-                onChange={(e) => setEraserMode(e.target.value as EraserMode)}
-              >
-                <option value="stroke">ストローク消しゴム</option>
-                <option value="area">エリア消しゴム</option>
-              </select>
-              <select
-                aria-label="消しゴムのサイズ"
-                value={eraserSize}
-                onChange={(e) => setEraserSize(Number(e.target.value))}
-              >
-                {[12, 24, 48, 80].map((v) => (
-                  <option key={v} value={v}>
-                    {v} px
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="tool-group">
-            {(
-              [
-                { id: "pen", label: "ペン (P)", icon: PenLine },
-                { id: "marker", label: "蛍光ペン (H)", icon: Highlighter },
-                { id: "eraser", label: "消しゴム (E)", icon: Eraser },
-                { id: "lasso", label: "なげなわ選択 (L)", icon: Lasso },
-                { id: "hand", label: "移動 (V)", icon: Hand },
-              ] as const
-            ).map((t) => (
-              <button
-                key={t.id}
-                title={t.label}
-                aria-label={t.label}
-                aria-pressed={tool === t.id}
-                className={"tool " + (tool === t.id ? "active" : "")}
-                onClick={() => setTool(t.id)}
-              >
-                <t.icon size={19} />
-              </button>
-            ))}
-          </div>
-          <span className="divider" />
-          <div className="colors">
-            {colors.map((c) => (
-              <button
-                key={c}
-                title={`色 ${c}`}
-                aria-pressed={color === c}
-                className={"swatch " + (c === color ? "chosen" : "")}
-                style={{ "--swatch": c } as React.CSSProperties}
-                onClick={() => setColor(c)}
-              />
-            ))}
-            <label className="custom-color" title="色を選ぶ">
-              <Plus size={13} />
-              <input
-                aria-label="カスタム色"
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-              />
-            </label>
-          </div>
-          <span className="divider" />
-          <label className="width-select">
-            <span
-              className="width-dot"
-              style={{
-                width: Math.min(width + 2, 10),
-                height: Math.min(width + 2, 10),
-              }}
-            />
-            <select
-              aria-label="線の太さ"
-              value={width}
-              onChange={(e) => setWidth(Number(e.target.value))}
-            >
-              {[1, 2.5, 4, 6, 10].map((w) => (
-                <option key={w} value={w}>
-                  {w} px
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="divider" />
-          <div className="tool-group">
-            <button
-              className="tool"
-              title="元に戻す (Ctrl+Z)"
-              disabled={!history?.past.length}
-              onClick={() => undo()}
-            >
-              <Undo2 size={18} />
-            </button>
-            <button
-              className="tool"
-              title="やり直し (Ctrl+Shift+Z)"
-              disabled={!history?.future.length}
-              onClick={() => undo(true)}
-            >
-              <Redo2 size={18} />
-            </button>
-          </div>
-          <label className="mouse-toggle">
-            <input
-              type="checkbox"
-              checked={mouse}
-              onChange={(e) => setMouse(e.target.checked)}
-            />
-            <span>{mouse ? "マウスでも描画" : "ペンのみ描画"}</span>
-          </label>
-        </div>
-        {error && (
-          <div className="error-banner" role="alert">
-            <span>{error}</span>
-            {failed.current && (
-              <button
-                onClick={() => {
-                  failed.current = false;
-                  enqueue(() => saveSnapshot(notes, folders));
-                  setError("");
-                }}
-              >
-                再保存
-              </button>
-            )}
-            <button title="メッセージを閉じる" onClick={() => setError("")}>
-              <X size={16} />
-            </button>
-          </div>
-        )}
-        {ready && page && note ? (
-          <div className="workspace">
-            <div className="page-strip">
-              <span className="page-strip-heading">
-                ページ <small>{note.pages.length}</small>
-              </span>
-              <div className="page-list">
-                {note.pages.map((p, i) => (
-                  <button
-                    key={p.id}
-                    className={
-                      "page-thumb " + (p.id === page.id ? "current" : "")
+              <div className="top-actions">
+                <ThemeControl
+                  theme={preferences.theme}
+                  onChange={(theme) =>
+                    storePreferences({ ...preferencesRef.current, theme })
+                  }
+                />
+                <span
+                  className={
+                    "save-status " + (saveStatus === "保存失敗" ? "failed" : "")
+                  }
+                  role="status"
+                >
+                  {saveStatus === "保存中…" ? (
+                    <LoaderCircle size={13} className="spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}{" "}
+                  {saveStatus}
+                </span>
+                <button
+                  className="export-button"
+                  disabled={!note || !!busy}
+                  onClick={() =>
+                    note &&
+                    void run("PDFを書き出し中", async () =>
+                      download(
+                        await exportPDF(note),
+                        `${note.title.replace(/[\\/:*?"<>|]/g, "_")}.pdf`,
+                        "application/pdf",
+                      ),
+                    )
+                  }
+                >
+                  <Download size={15} />
+                  <span>PDF書き出し</span>
+                </button>
+                <button
+                  title="使い方"
+                  className="icon-button"
+                  onClick={() => setDialog({ kind: "help" })}
+                >
+                  <HelpCircle size={18} />
+                </button>
+              </div>
+            </header>
+            <div className="toolbar">
+              {tool === "eraser" && (
+                <div className="eraser-options">
+                  <select
+                    aria-label="消しゴムの種類"
+                    value={eraserMode}
+                    onChange={(e) =>
+                      setEraserMode(e.target.value as EraserMode)
                     }
-                    onClick={() => setPageId(p.id)}
-                    aria-label={`ページ ${i + 1}`}
-                    aria-current={p.id === page.id ? "page" : undefined}
                   >
-                    <span
+                    <option value="stroke">ストローク消しゴム</option>
+                    <option value="area">エリア消しゴム</option>
+                  </select>
+                  <select
+                    aria-label="消しゴムのサイズ"
+                    value={eraserSize}
+                    onChange={(e) => setEraserSize(Number(e.target.value))}
+                  >
+                    {[12, 24, 48, 80].map((v) => (
+                      <option key={v} value={v}>
+                        {v} px
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="tool-group pen-presets">
+                {(["pen1", "pen2", "pen3", "marker"] as PenId[]).map(
+                  (id, i) => (
+                    <button
+                      key={id}
                       className={
-                        "mini-paper " +
-                        (p.pdfIndex !== undefined ? "pdf-paper" : p.paper)
+                        "tool pen-preset " +
+                        ((tool === "pen" || tool === "marker") &&
+                        preferences.activePen === id
+                          ? "active"
+                          : "")
                       }
+                      aria-label={
+                        id === "marker" ? "蛍光ペン (H)" : `ペン${i + 1}`
+                      }
+                      aria-pressed={
+                        (tool === "pen" || tool === "marker") &&
+                        preferences.activePen === id
+                      }
+                      title={id === "marker" ? "蛍光ペン (H)" : `ペン${i + 1}`}
+                      onClick={() => choosePen(id)}
+                      style={{ color: preferences.pens[id].color }}
                     >
-                      {p.pdfIndex !== undefined ? (
-                        <span>
-                          PDF
-                          <br />
-                          <b>{p.pdfIndex + 1}</b>
-                        </span>
+                      {id === "marker" ? (
+                        <Highlighter size={19} />
                       ) : (
-                        <span>{String(i + 1).padStart(2, "0")}</span>
+                        <PenLine size={19} />
                       )}
-                      <span className="mini-ink">
-                        {p.strokes.length > 0 ? "〰" : ""}
-                      </span>
-                    </span>
-                    <small>{i + 1}</small>
+                      <small>{id === "marker" ? "" : i + 1}</small>
+                    </button>
+                  ),
+                )}
+              </div>
+              <div className="tool-group">
+                {(
+                  [
+                    { id: "eraser", label: "消しゴム (E)", icon: Eraser },
+                    { id: "lasso", label: "なげなわ選択 (L)", icon: Lasso },
+                    { id: "hand", label: "移動 (V)", icon: Hand },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    title={t.label}
+                    aria-label={t.label}
+                    aria-pressed={tool === t.id}
+                    className={"tool " + (tool === t.id ? "active" : "")}
+                    onClick={() => setTool(t.id)}
+                  >
+                    <t.icon size={19} />
                   </button>
                 ))}
               </div>
-              <button
-                className="add-page"
-                title="ページ追加"
-                onClick={() => {
-                  const p = newPage();
-                  updateNote({ ...note, pages: [...note.pages, p] });
-                  setPageId(p.id);
-                }}
-              >
-                <Plus size={18} />
-              </button>
-            </div>
-            <section className="desk">
-              <div className="desk-options">
-                <label className="paper-select">
-                  用紙{" "}
-                  <select
-                    aria-label="用紙の種類"
-                    value={page.pdfIndex !== undefined ? "pdf" : page.paper}
-                    disabled={page.pdfIndex !== undefined}
-                    onChange={(e) =>
-                      updatePage({
-                        ...page,
-                        paper: e.target.value as Page["paper"],
-                      })
-                    }
-                  >
-                    {page.pdfIndex !== undefined ? (
-                      <option value="pdf">PDF</option>
-                    ) : (
-                      <>
-                        <option value="blank">白紙</option>
-                        <option value="ruled">罫線</option>
-                        <option value="grid">方眼</option>
-                      </>
-                    )}
-                  </select>
-                  <ChevronDown size={13} />
+              <span className="divider" />
+              <div className="colors">
+                {colors.map((c) => (
+                  <button
+                    key={c}
+                    title={`色 ${c}`}
+                    aria-pressed={color === c}
+                    className={"swatch " + (c === color ? "chosen" : "")}
+                    style={{ "--swatch": c } as React.CSSProperties}
+                    onClick={() => setColor(c)}
+                  />
+                ))}
+                <label className="custom-color" title="色を選ぶ">
+                  <Plus size={13} />
+                  <input
+                    aria-label="カスタム色"
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                  />
                 </label>
               </div>
-              <Sheet
-                key={page.id}
-                page={page}
-                pdf={note.pdf}
-                zoom={zoom}
-                setZoom={setZoom}
-                tool={tool}
-                color={color}
-                width={width}
-                mouse={mouse}
-                eraserMode={eraserMode}
-                eraserSize={eraserSize}
-                isLastPage={pageIndex === note.pages.length - 1}
-                onAddPage={addPage}
-                onCommit={commit}
-                onError={setError}
-                onWriting={(v) => {
-                  writing.current = v;
-                }}
-              />
-              <div className="floating-zoom">
-                <button
-                  title="縮小"
-                  onClick={() => setZoom(Math.max(0.25, zoom - 0.1))}
-                >
-                  <Minus size={15} />
-                </button>
-                <span>{Math.round(zoom * 100)}%</span>
-                <button
-                  title="拡大"
-                  onClick={() => setZoom(Math.min(2.5, zoom + 0.1))}
-                >
-                  <Plus size={15} />
-                </button>
-                <i />
-                <button
-                  title="幅に合わせる"
-                  onClick={() => {
-                    const el = document.querySelector(".viewport");
-                    if (el)
-                      setZoom(
-                        Math.max(
-                          0.25,
-                          Math.min(2.5, (el.clientWidth - 96) / page.width),
-                        ),
-                      );
+              <span className="divider" />
+              <label className="width-select">
+                <span
+                  className="width-dot"
+                  style={{
+                    width: Math.min(width + 2, 10),
+                    height: Math.min(width + 2, 10),
                   }}
+                />
+                <select
+                  aria-label="線の太さ"
+                  value={width}
+                  onChange={(e) => setWidth(Number(e.target.value))}
                 >
-                  <Maximize2 size={15} />
+                  {[1, 2.5, 4, 6, 10].map((w) => (
+                    <option key={w} value={w}>
+                      {w} px
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="divider" />
+              <div className="tool-group">
+                <button
+                  className="tool"
+                  title="元に戻す (Ctrl+Z)"
+                  disabled={!history?.past.length}
+                  onClick={() => undo()}
+                >
+                  <Undo2 size={18} />
+                </button>
+                <button
+                  className="tool"
+                  title="やり直し (Ctrl+Shift+Z)"
+                  disabled={!history?.future.length}
+                  onClick={() => undo(true)}
+                >
+                  <Redo2 size={18} />
                 </button>
               </div>
-              <footer className="statusbar">
-                <span>
-                  <span className="green-dot" />
-                  {mouse ? "ペン・マウス入力" : "MPP / ペン入力"}
-                  <span className="status-hint">指で移動・2本指で拡大縮小</span>
-                </span>
-                <div>
-                  <button
-                    title="ページを前へ移動"
-                    disabled={pageIndex === 0}
-                    onClick={() => movePage(-1)}
-                  >
-                    <ArrowUp size={14} />
-                  </button>
-                  <button
-                    title="ページを後ろへ移動"
-                    disabled={pageIndex === note.pages.length - 1}
-                    onClick={() => movePage(1)}
-                  >
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    title="ページ削除"
-                    disabled={note.pages.length === 1}
-                    onClick={() => setDialog({ kind: "deletePage" })}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                  <i />
-                  <button
-                    title="前のページ"
-                    disabled={pageIndex === 0}
-                    onClick={() => setPageId(note.pages[pageIndex - 1].id)}
-                  >
-                    <ChevronLeft size={15} />
-                  </button>
-                  <span>
-                    {pageIndex + 1} / {note.pages.length}
+              <label className="setting-toggle">
+                <input
+                  type="checkbox"
+                  aria-label="筆圧検知"
+                  checked={pressure}
+                  onChange={(e) => setPen({ pressure: e.target.checked })}
+                />
+                筆圧
+              </label>
+              <label className="setting-toggle">
+                <input
+                  type="checkbox"
+                  aria-label="図形補正"
+                  checked={preferences.shapeCorrection}
+                  onChange={(e) =>
+                    storePreferences({
+                      ...preferencesRef.current,
+                      shapeCorrection: e.target.checked,
+                    })
+                  }
+                />
+                図形補正
+              </label>
+              <label className="mouse-toggle">
+                <input
+                  type="checkbox"
+                  checked={mouse}
+                  onChange={(e) => setMouse(e.target.checked)}
+                />
+                <span>{mouse ? "マウスでも描画" : "ペンのみ描画"}</span>
+              </label>
+            </div>
+            {error && (
+              <div className="error-banner" role="alert">
+                <span>{error}</span>
+                {failed.current && <button onClick={retrySave}>再保存</button>}
+                <button title="メッセージを閉じる" onClick={() => setError("")}>
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+            {ready && page && note ? (
+              <div className="workspace">
+                <div className="page-strip">
+                  <span className="page-strip-heading">
+                    ページ <small>{note.pages.length}</small>
                   </span>
+                  <div className="page-list">
+                    {note.pages.map((p, i) => (
+                      <button
+                        key={p.id}
+                        className={
+                          "page-thumb " + (p.id === page.id ? "current" : "")
+                        }
+                        onClick={() => goPage(p.id)}
+                        aria-label={`ページ ${i + 1}`}
+                        aria-current={p.id === page.id ? "page" : undefined}
+                      >
+                        <span
+                          className={
+                            "mini-paper " +
+                            (p.pdfIndex !== undefined ? "pdf-paper" : p.paper)
+                          }
+                        >
+                          {p.pdfIndex !== undefined ? (
+                            <span>
+                              PDF
+                              <br />
+                              <b>{p.pdfIndex + 1}</b>
+                            </span>
+                          ) : (
+                            <span>{String(i + 1).padStart(2, "0")}</span>
+                          )}
+                          <span className="mini-ink">
+                            {p.strokes.length > 0 ? "〰" : ""}
+                          </span>
+                        </span>
+                        <small>{i + 1}</small>
+                      </button>
+                    ))}
+                  </div>
                   <button
-                    title="次のページ"
-                    disabled={pageIndex === note.pages.length - 1}
-                    onClick={() => setPageId(note.pages[pageIndex + 1].id)}
+                    className="add-page"
+                    title="ページ追加"
+                    onClick={() => {
+                      const p = newPage();
+                      updateNote({ ...note, pages: [...note.pages, p] });
+                      goPage(p.id);
+                    }}
                   >
-                    <ChevronRight size={15} />
+                    <Plus size={18} />
                   </button>
                 </div>
-              </footer>
-            </section>
-          </div>
-        ) : (
-          <div className="empty">
-            <BookOpen size={48} />
-            <h1>
-              {ready ? "あなたの考えを、最初の一冊に。" : "ノートを読み込み中…"}
-            </h1>
-            {ready && (
-              <button
-                className="new-note"
-                onClick={() => setDialog({ kind: "new", value: "" })}
-              >
-                <Plus size={18} />
-                新しいノート
-              </button>
+                <section className="desk">
+                  <div className="desk-options">
+                    <label className="paper-select">
+                      用紙{" "}
+                      <select
+                        aria-label="用紙の種類"
+                        value={page.pdfIndex !== undefined ? "pdf" : page.paper}
+                        disabled={page.pdfIndex !== undefined}
+                        onChange={(e) =>
+                          updatePage({
+                            ...page,
+                            paper: e.target.value as Page["paper"],
+                          })
+                        }
+                      >
+                        {page.pdfIndex !== undefined ? (
+                          <option value="pdf">PDF</option>
+                        ) : (
+                          <>
+                            <option value="blank">白紙</option>
+                            <option value="ruled">罫線</option>
+                            <option value="grid">方眼</option>
+                          </>
+                        )}
+                      </select>
+                      <ChevronDown size={13} />
+                    </label>
+                  </div>
+                  <ContinuousNotebook
+                    key={note.id}
+                    note={note}
+                    jump={jump}
+                    zoom={zoom}
+                    setZoom={setZoom}
+                    tool={tool}
+                    color={color}
+                    width={width}
+                    pressure={pressure}
+                    shapeCorrection={preferences.shapeCorrection}
+                    mouse={mouse}
+                    eraserMode={eraserMode}
+                    eraserSize={eraserSize}
+                    onActive={setPageId}
+                    onAddPage={addPage}
+                    onCommit={(id, strokes) => commit(strokes, id)}
+                    onError={setError}
+                    onWriting={(b) => {
+                      writing.current = b;
+                    }}
+                  />
+                  <div className="floating-zoom">
+                    <button
+                      title="縮小"
+                      onClick={() => setZoom(Math.max(0.25, zoom - 0.1))}
+                    >
+                      <Minus size={15} />
+                    </button>
+                    <span>{Math.round(zoom * 100)}%</span>
+                    <button
+                      title="拡大"
+                      onClick={() => setZoom(Math.min(2.5, zoom + 0.1))}
+                    >
+                      <Plus size={15} />
+                    </button>
+                    <i />
+                    <button
+                      title="幅に合わせる"
+                      onClick={() => {
+                        const el = document.querySelector(".viewport");
+                        if (el)
+                          setZoom(
+                            Math.max(
+                              0.25,
+                              Math.min(2.5, (el.clientWidth - 96) / page.width),
+                            ),
+                          );
+                      }}
+                    >
+                      <Maximize2 size={15} />
+                    </button>
+                  </div>
+                  <footer className="statusbar">
+                    <span>
+                      <span className="green-dot" />
+                      {mouse ? "ペン・マウス入力" : "MPP / ペン入力"}
+                      <span className="status-hint">
+                        指で移動・2本指で拡大縮小
+                      </span>
+                    </span>
+                    <div>
+                      <button
+                        title="ページを前へ移動"
+                        disabled={pageIndex === 0}
+                        onClick={() => movePage(-1)}
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        title="ページを後ろへ移動"
+                        disabled={pageIndex === note.pages.length - 1}
+                        onClick={() => movePage(1)}
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                      <button
+                        title="ページ削除"
+                        disabled={note.pages.length === 1}
+                        onClick={() => setDialog({ kind: "deletePage" })}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <i />
+                      <button
+                        title="前のページ"
+                        disabled={pageIndex === 0}
+                        onClick={() => goPage(note.pages[pageIndex - 1].id)}
+                      >
+                        <ChevronLeft size={15} />
+                      </button>
+                      <span>
+                        {pageIndex + 1} / {note.pages.length}
+                      </span>
+                      <button
+                        title="次のページ"
+                        disabled={pageIndex === note.pages.length - 1}
+                        onClick={() => goPage(note.pages[pageIndex + 1].id)}
+                      >
+                        <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  </footer>
+                </section>
+              </div>
+            ) : (
+              <div className="empty">
+                <BookOpen size={48} />
+                <h1>
+                  {ready
+                    ? "あなたの考えを、最初の一冊に。"
+                    : "ノートを読み込み中…"}
+                </h1>
+                {ready && (
+                  <button
+                    className="new-note"
+                    onClick={() => setDialog({ kind: "new", value: "" })}
+                  >
+                    <Plus size={18} />
+                    新しいノート
+                  </button>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </main>
       <input
@@ -1019,6 +1192,18 @@ function App() {
             ) : dialog.kind === "help" ? (
               <div className="help-content">
                 <p>
+                  <b>連続ページ</b>
+                  　上下のスクロールだけでページ間を移動できます。左のページ一覧で任意のページへジャンプします。
+                </p>
+                <p>
+                  <b>ペン設定</b>
+                  　3本のペンと蛍光ペンそれぞれに色・太さ・筆圧の設定を保存します。
+                </p>
+                <p>
+                  <b>図形補正</b>
+                  　オンにすると、書き終えた直線・円・楕円・長方形を整えます。通常の筆記ではオフにもでき、補正後はUndoで消せます。
+                </p>
+                <p>
                   <b>書く</b>
                   　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスの場合は「ペンのみ描画」を切り替えてください。
                 </p>
@@ -1049,7 +1234,7 @@ function App() {
                 </p>
                 <p>
                   <b>フォルダー</b>
-                  　左側でフォルダーを作成・変更・削除できます。ノート名横の「…」から移動先を選びます。フォルダー削除時もノートは未分類に残ります。
+                  　ノート管理ページで階層フォルダーを作成・変更できます。配下もまとめて移動・名前変更でき、削除時もノートは親フォルダーに残ります。
                 </p>
                 <p>
                   <b>オフライン</b>

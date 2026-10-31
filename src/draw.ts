@@ -44,21 +44,34 @@ export function smoothPoints(points: Stroke["points"]): Stroke["points"] {
 }
 export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
   if (!s.points.length) return;
-  const points = smoothPoints(s.points);
+  const points = s.shape ? s.points : smoothPoints(s.points);
   ctx.save();
   ctx.strokeStyle = s.color;
   ctx.fillStyle = s.color;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.globalAlpha = s.tool === "marker" ? 0.27 : 1;
-  if (s.tool === "marker") {
-    ctx.lineWidth = s.width;
+  if (s.shape || (s.tool === "marker" && !s.pressure)) {
+    ctx.lineWidth =
+      s.shape && s.tool === "pen"
+        ? s.width * (0.25 + points[0].p * 0.95)
+        : s.width;
+    if (s.shape === "rectangle") ctx.lineJoin = "miter";
     ctx.beginPath();
     points.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
     if (points.length === 1) {
       const p = points[0];
       ctx.lineTo(p.x + 0.01, p.y);
     }
+    if (
+      s.shape &&
+      points.length > 2 &&
+      Math.hypot(
+        points[0].x - points.at(-1)!.x,
+        points[0].y - points.at(-1)!.y,
+      ) < 0.001
+    )
+      ctx.closePath();
     ctx.stroke();
   } else {
     const left: { x: number; y: number }[] = [],
@@ -74,16 +87,23 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
       right.push({ x: p.x + (dy / len) * r, y: p.y - (dx / len) * r });
     });
     ctx.beginPath();
-    [...left, ...right.reverse()].forEach((p, i) =>
+    const outline = [...left, ...right.reverse()];
+    let area = 0;
+    for (let i = 0; i < outline.length; i++) {
+      const a = outline[i],
+        b = outline[(i + 1) % outline.length];
+      area += a.x * b.y - b.x * a.y;
+    }
+    if (area < 0) outline.reverse();
+    outline.forEach((p, i) =>
       i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y),
     );
     ctx.closePath();
-    ctx.fill();
     for (const p of [points[0], points[points.length - 1]]) {
-      ctx.beginPath();
+      ctx.moveTo(p.x + (s.width * (0.25 + p.p * 0.95)) / 2, p.y);
       ctx.arc(p.x, p.y, (s.width * (0.25 + p.p * 0.95)) / 2, 0, Math.PI * 2);
-      ctx.fill();
     }
+    ctx.fill();
   }
   ctx.restore();
 }

@@ -31,3 +31,13 @@ it("upgrades the old schema without losing notes and supports folder renaming at
   expect((await loadNotes())[0].title).toBe(old.title);
   expect(await loadFolders()).toEqual([]);
 });
+import { defaultPreferences } from "./preferences";
+import { savePreferences, loadPreferences } from "./storage";
+it("persists pen settings independently from note snapshots", async () => {
+  const pref = defaultPreferences();
+  pref.pens.pen3.width = 10;
+  pref.pens.pen3.pressure = false;
+  await savePreferences(pref);
+  await saveSnapshot([newNote()], ["A/B"]);
+  expect(await loadPreferences()).toEqual(pref);
+});

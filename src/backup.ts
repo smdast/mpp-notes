@@ -20,6 +20,9 @@ export function makeBackup(notes: Note[], folders: string[] = []) {
 const finite = (x: unknown) => typeof x === "number" && Number.isFinite(x);
 function validStroke(s: Stroke) {
   return (
+    (s.shape === undefined ||
+      ["line", "rectangle", "ellipse"].includes(s.shape)) &&
+    (s.pressure === undefined || typeof s.pressure === "boolean") &&
     typeof s.id === "string" &&
     ["pen", "marker"].includes(s.tool) &&
     /^#[0-9a-f]{6}$/i.test(s.color) &&
@@ -75,7 +78,7 @@ export function readBackupBundle(data: Uint8Array): {
       if (
         (n.folder !== undefined &&
           (typeof n.folder !== "string" ||
-            n.folder.length > 100 ||
+            n.folder.length > 2019 ||
             n.folder === "*")) ||
         typeof n.title !== "string" ||
         n.title.length > 300 ||
@@ -107,7 +110,7 @@ export function readBackupBundle(data: Uint8Array): {
         m.folders.length > 2000 ||
         m.folders.some(
           (f: unknown) =>
-            typeof f !== "string" || !f.trim() || f.length > 100 || f === "*",
+            typeof f !== "string" || !f.trim() || f.length > 2019 || f === "*",
         ))
     )
       throw Error();

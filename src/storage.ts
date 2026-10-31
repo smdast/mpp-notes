@@ -106,3 +106,17 @@ export async function saveFolders(folders: string[]) {
   tx.objectStore("settings").put(folders, "folders");
   await completion(db, tx);
 }
+import type { Preferences } from "./preferences";
+export async function loadPreferences(): Promise<unknown> {
+  const db = await openDB();
+  const tx = db.transaction("settings", "readonly");
+  const request = tx.objectStore("settings").get("preferences");
+  await completion(db, tx);
+  return request.result;
+}
+export async function savePreferences(value: Preferences) {
+  const db = await openDB();
+  const tx = db.transaction("settings", "readwrite");
+  tx.objectStore("settings").put(value, "preferences");
+  await completion(db, tx);
+}

@@ -1,5 +1,7 @@
 export type Point = { x: number; y: number; p: number };
 export type Stroke = {
+  shape?: "line" | "rectangle" | "ellipse";
+  pressure?: boolean;
   id: string;
   tool: "pen" | "marker";
   color: string;
