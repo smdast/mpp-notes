@@ -389,7 +389,7 @@ function App() {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
-        dialog || settingsOpen || document.querySelector(".page-context-menu") ||
+        dialog || settingsOpen || document.querySelector(".page-context-menu,.page-template-dialog") ||
         busy
       )
         return;
@@ -741,7 +741,7 @@ function App() {
             )}
             {ready && page && note ? (
               <div className="workspace">
-                <PageSidebar pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
+                <PageSidebar key={note.id} pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
                   onInsert={(id,after)=>{const result=insertedPage(note.pages,id,after,dark);if(result){updateNote({...note,pages:result.pages});goPage(result.page.id);}}}
                   onDuplicate={(id)=>{const source=note.pages.find(p=>p.id===id);if(!source)return;const copy=duplicatePage(source),index=note.pages.indexOf(source)+1;updateNote({...note,pages:[...note.pages.slice(0,index),copy,...note.pages.slice(index)]});goPage(copy.id);}}
                   onDelete={(id)=>setDialog({kind:"deletePage",pageId:id})}
