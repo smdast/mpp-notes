@@ -3,7 +3,7 @@ import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { PDFDocument, degrees } from "pdf-lib";
 import { uid, type Note, type Page } from "./model";
 import { drawPaper, drawStroke } from "./draw";
-import { prepareImages } from "./images";
+import { loadInkImage, prepareImages } from "./images";
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 export { pdfjs };
 export function pdfOptions() {
@@ -103,6 +103,7 @@ export async function exportPDF(note: Note) {
     canvas.height = Math.ceil(p.height * scale);
     const ctx = canvas.getContext("2d")!;
     ctx.scale(canvas.width / p.width, canvas.height / p.height);
+    if (p.backgroundImage) await loadInkImage(p.backgroundImage);
     if (p.pdfIndex === undefined) drawPaper(ctx, p);
     await prepareImages(p.strokes);
     p.strokes.forEach((s) => drawStroke(ctx, s));

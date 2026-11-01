@@ -10,10 +10,13 @@ import {
   FileUp,
   PanelLeft,
 } from "lucide-react";
+import { NoteCover } from "./NoteCover";
 import { displayPath } from "./Breadcrumb";
 import type { Note } from "./model";
 import { folderName, parentFolder, isWithin } from "./folders";
 type Props = {
+  dark: boolean;
+  onCover: (note:Note,file?:File)=>void;
   themeControl: ReactNode;
   driveControl: ReactNode;
   notes: Note[];
@@ -33,6 +36,7 @@ type Props = {
   onToggleSidebar: () => void;
 };
 export function Library({
+  dark, onCover,
   themeControl,
   driveControl,
   notes,
@@ -202,8 +206,7 @@ export function Library({
             <article className="note-card" key={n.id}>
               <button className="note-open" onClick={() => onOpen(n)}>
                 <div className={"note-cover " + (n.pdf ? "pdf" : "")}>
-                  <BookOpen size={32} />
-                  <span>{n.pdf ? "PDF" : "NOTE"}</span>
+                  <NoteCover note={n} dark={dark}/>
                 </div>
                 <div>
                   <h3>{n.title}</h3>
@@ -215,6 +218,9 @@ export function Library({
                 </div>
               </button>
               <div className="note-card-actions">
+                <label className="cover-upload" title="表紙画像を選択">表紙<input type="file" accept="image/*" aria-label={`${n.title} の表紙画像`} onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)onCover(n,f);}}/></label>
+                {n.coverImage&&<button title="1ページ目の表紙に戻す" onClick={()=>onCover(n)}>自動</button>}
+
                 <select
                   aria-label={`${n.title} の移動先`}
                   value={n.folder || ""}
@@ -256,11 +262,7 @@ export function Library({
           </div>
         )}
         {!ready && <div className="library-empty">ノートを読み込み中…</div>}
-        <nav className="library-info-links" aria-label="アプリ情報">
-          <a href="./about.html">MPP Notesについて</a>
-          <a href="./privacy.html">プライバシーポリシー</a>
-          <a href="./terms.html">利用規約</a>
-        </nav>
+
       </div>
     </section>
   );

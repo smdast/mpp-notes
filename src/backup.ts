@@ -17,6 +17,7 @@ export function makeBackup(notes: Note[], folders: string[] = []) {
   for (const n of notes) if (n.pdf) files[`pdf/${n.id}.pdf`] = n.pdf;
   return zipSync(files);
 }
+export const validImage = (v: unknown) => v === undefined || (typeof v === "string" && v.length <= 30000000 && /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(v));
 const finite = (x: unknown) => typeof x === "number" && Number.isFinite(x);
 export function validStroke(s: Stroke) {
   return (
@@ -45,6 +46,7 @@ export function validStroke(s: Stroke) {
 }
 function validPage(p: Page) {
   return (
+    validImage(p.backgroundImage) &&
     (p.paperColor === undefined || /^#[0-9a-f]{6}$/i.test(p.paperColor)) &&
     typeof p.id === "string" &&
     finite(p.width) &&
@@ -101,6 +103,7 @@ export function readBackupBundle(
             n.folder === "*")) ||
         (preserveIds &&
           (!finite(n.updated) || typeof n.id !== "string" || !n.id)) ||
+        !validImage(n.coverImage) ||
         typeof n.title !== "string" ||
         n.title.length > 300 ||
         !Array.isArray(n.pages) ||
@@ -115,6 +118,7 @@ export function readBackupBundle(
       return {
         id: preserveIds ? n.id : uid(),
         title: n.title,
+        coverImage: n.coverImage,
         folder: n.folder,
         updated: preserveIds ? n.updated : Date.now(),
         pages: n.pages.map((p) => ({

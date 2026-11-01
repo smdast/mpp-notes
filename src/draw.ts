@@ -190,6 +190,10 @@ export function drawPaper(
   const color = background || p.paperColor || LIGHT_PAPER;
   ctx.fillStyle = color;
   ctx.fillRect(0, 0, p.width, p.height);
+  if (p.backgroundImage) {
+    const image=inkImage(p.backgroundImage);
+    if (image) {const scale=Math.min(p.width/image.width,p.height/image.height);ctx.drawImage(image,(p.width-image.width*scale)/2,(p.height-image.height*scale)/2,image.width*scale,image.height*scale);}
+  }
   if (p.paper === "blank") return;
   ctx.strokeStyle = isDarkColor(color)
     ? p.paper === "grid"

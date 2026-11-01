@@ -14,6 +14,7 @@ export type Stroke = {
 };
 export type Paper = "blank" | "ruled" | "grid";
 export type Page = {
+  backgroundImage?: string;
   paperColor?: string;
   id: string;
   width: number;
@@ -23,6 +24,7 @@ export type Page = {
   pdfIndex?: number;
 };
 export type Note = {
+  coverImage?: string;
   folder?: string;
   id: string;
   title: string;

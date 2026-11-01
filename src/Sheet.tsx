@@ -21,7 +21,7 @@ import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
 import { SelectionPopup } from "./SelectionPopup";
 import { cloneStrokes, decodeStrokes, editableTarget, localStrokes, rememberStrokes } from "./clipboard";
-import { imageStroke, prepareImages } from "./images";
+import { imageStroke, prepareImages, loadInkImage } from "./images";
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
   page: Page;
@@ -374,6 +374,7 @@ export function Sheet({
       0,
     );
     drawPaper(ctx, page, paperColor);
+    if (page.backgroundImage && page.pdfIndex === undefined) void loadInkImage(page.backgroundImage).then((image) => {if (!disposed) {decodedImages.current.push(image);drawPaper(ctx,page,paperColor);}}).catch(()=>{if(!disposed) onError("背景画像を読み込めません。");});
     if (page.pdfIndex !== undefined) {
       setPdfLoading(true);
       if (pdfDocument)
@@ -397,7 +398,7 @@ export function Sheet({
       disposed = true;
       render?.cancel();
     };
-  }, [page.id, page.paper, page.paperColor, paperColor, pdfDocument, pixels]);
+  }, [page.id, page.paper, page.paperColor, page.backgroundImage, paperColor, pdfDocument, pixels]);
   const point = (e: {
     clientX: number;
     clientY: number;

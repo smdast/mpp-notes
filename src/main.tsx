@@ -56,7 +56,7 @@ import { importPDF, exportPDF } from "./pdf";
 import type { Tool } from "./Sheet";
 import { ContinuousNotebook } from "./ContinuousNotebook";
 import { Library } from "./Library";
-import { ThemeControl, useTheme } from "./ThemeControl";
+import { useTheme } from "./ThemeControl";
 import { Breadcrumb, displayPath } from "./Breadcrumb";
 import { pagePaperColor, penColor, isDarkColor, darkPenColors } from "./paper";
 import { normalizeFolders, relocateFolder } from "./folders";
@@ -69,6 +69,8 @@ import {
 } from "./preferences";
 import "./style.css";
 import { FolderNav } from "./FolderNav";
+import { SettingsPage } from "./SettingsPage";
+import { imageStroke } from "./images";
 import { PWAControls } from "./PWAControls";
 import { clampZoom } from "./scrolling";
 import { EditorToolbar } from "./EditorToolbar";
@@ -79,11 +81,16 @@ type Dialog = {
   value?: string;
 };
 function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [driveOpen, setDriveOpen] = useState(false);
   const [view, setView] = useState<"library" | "editor">("library");
   const [preferences, setPreferences] =
     useState<Preferences>(defaultPreferences);
   const dark = useTheme(preferences.theme);
+  useEffect(()=>{document.documentElement.dataset.accent=preferences.accent;},[preferences.accent]);
+  function freshNote(title?:string){const n=newNote(title);const p=preferencesRef.current;n.pages[0]={...n.pages[0],paper:p.paperPattern,paperColor:p.paperColor==="auto"?undefined:p.paperColor,backgroundImage:p.paperImage};return n;}
+  function backupAction(){void run("バックアップを作成中",async()=>download(makeBackup(notes,folders),`mpp-notes-${new Date().toISOString().slice(0,10)}.zip`,"application/zip"));}
+
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const { width, pressure, dotted, dashed } = preferences.pens[preferences.activePen];
@@ -278,7 +285,7 @@ function App() {
           setNoteId(found[0].id);
           setPageId(found[0].pages[0].id);
         } else {
-          const first = newNote("はじめのノート");
+          const first = freshNote("はじめのノート");
           setNotes([first]);
           setNoteId(first.id);
           setPageId(first.pages[0].id);
@@ -372,7 +379,7 @@ function App() {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
-        dialog ||
+        dialog || settingsOpen ||
         busy
       )
         return;
@@ -402,7 +409,7 @@ function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [page, dialog, busy, historyRevision]);
+  }, [page, dialog, busy, historyRevision, settingsOpen]);
   function select(n: Note) {
     // Async imports can navigate before React commits their new note list.
     if (!notesRef.current.some((existing) => existing.id === n.id))
@@ -471,7 +478,7 @@ function App() {
   function submitDialog() {
     if (!dialog) return;
     const title = dialog.value?.trim();
-    if (dialog.kind === "new" && title) add(newNote(title));
+    if (dialog.kind === "new" && title) add(freshNote(title));
     if (dialog.kind === "rename" && title && note)
       updateNote({ ...note, title });
     if (dialog.kind === "deleteNote" && note) {
@@ -573,72 +580,16 @@ function App() {
             <FileUp size={17} />
             PDFを取り込む
           </button>
-          <PWAControls
-            canReload={() =>
-              pending.current === 0 && !failed.current && !writing.current
-            }
-          />
-          <div className="sidebar-footer">
-            <div>
-              <ShieldCheck size={17} />
-              <span>
-                あなたの端末に保存
-                <small>
-                  {drive.connected
-                    ? "Google Driveと自動同期"
-                    : "Drive接続は任意です"}
-                </small>
-              </span>
-            </div>
-            <div className="backup-actions">
-              <button
-                disabled={!ready}
-                onClick={() =>
-                  void run("バックアップを作成中", async () =>
-                    download(
-                      makeBackup(notes, folders),
-                      `mpp-notes-${new Date().toISOString().slice(0, 10)}.zip`,
-                      "application/zip",
-                    ),
-                  )
-                }
-              >
-                <Download size={14} />
-                バックアップ
-              </button>
-              <button
-                disabled={!ready}
-                onClick={() => backupInput.current?.click()}
-              >
-                <Upload size={14} />
-                復元
-              </button>
-            </div>
-          </div>
+          <button className="import-button" onClick={()=>setSettingsOpen(true)}>⚙ 設定</button>
         </aside>
       )}
       <main>
         {view === "library" ? (
           <Library
-            driveControl={
-              <button
-                className="export-button drive-toggle"
-                aria-label="Google Drive自動同期"
-                title={drive.status}
-                onClick={() => setDriveOpen(true)}
-              >
-                <Cloud size={16} />
-                <span>Google Drive</span>
-              </button>
-            }
-            themeControl={
-              <ThemeControl
-                theme={preferences.theme}
-                onChange={(theme) =>
-                  storePreferences({ ...preferencesRef.current, theme })
-                }
-              />
-            }
+            driveControl={<button className="export-button" onClick={()=>setSettingsOpen(true)}>⚙ 設定</button>}
+            themeControl={null}
+            dark={dark}
+            onCover={(n,file)=>{if(!file){updateNote({...n,coverImage:undefined});return;}void run("表紙画像を読み込み中",async()=>{const image=await imageStroke(file,{width:794,height:1123});const current=notesRef.current.find(x=>x.id===n.id);if(current)updateNote({...current,coverImage:image.image});});}}
             onToggleSidebar={() => setSidebar(!sidebar)}
             notes={notes}
             folders={folders}
@@ -735,20 +686,7 @@ function App() {
                 )}
               </div>
               <div className="top-actions">
-                <button
-                  className="icon-button"
-                  title="Google Drive自動同期"
-                  aria-label="Google Drive自動同期"
-                  onClick={() => setDriveOpen(true)}
-                >
-                  <Cloud size={17} />
-                </button>
-                <ThemeControl
-                  theme={preferences.theme}
-                  onChange={(theme) =>
-                    storePreferences({ ...preferencesRef.current, theme })
-                  }
-                />
+                <button className="icon-button" title="設定" onClick={()=>setSettingsOpen(true)}>⚙</button>
                 <span
                   className={
                     "save-status " + (saveStatus === "保存失敗" ? "failed" : "")
@@ -784,13 +722,6 @@ function App() {
                 >
                   <Download size={15} />
                   <span>PDF書き出し</span>
-                </button>
-                <button
-                  title="使い方"
-                  className="icon-button"
-                  onClick={() => setDialog({ kind: "help" })}
-                >
-                  <HelpCircle size={18} />
                 </button>
               </div>
             </header>
@@ -1096,6 +1027,10 @@ function App() {
           if (f) void restore(f);
         }}
       />
+      {settingsOpen && <SettingsPage onApply={view==="editor"&&note?.pages.some(p=>p.pdfIndex===undefined)?()=>{if(!note||!page)return;const p=preferencesRef.current;updateNote({...note,pages:applyPaperTemplate(note.pages,{...page,pdfIndex:undefined,paper:p.paperPattern,paperColor:p.paperColor==="auto"?(dark?"#1e2822":"#fffefa"):p.paperColor,backgroundImage:p.paperImage},dark)});}:undefined} value={preferences} onChange={storePreferences} onClose={()=>setSettingsOpen(false)}
+        drive={<button className="primary" onClick={()=>setDriveOpen(true)}>Google Drive連携 · {drive.status}</button>}
+        backup={backupAction} restore={()=>backupInput.current?.click()} help={()=>setDialog({kind:"help"})}
+        pwa={<PWAControls canReload={()=>pending.current===0&&!failed.current&&!writing.current}/>} onError={setError} error={error}/>}
       {driveOpen && (
         <DrivePanel drive={drive} onClose={() => setDriveOpen(false)} />
       )}

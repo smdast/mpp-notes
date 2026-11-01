@@ -10,12 +10,16 @@ export type PenSettings = {
 };
 export type Preferences = {
   theme: Theme;
+  accent: "green" | "blue" | "rose";
+  paperColor: string;
+  paperPattern: "blank" | "ruled" | "grid";
+  paperImage?: string;
   pens: Record<PenId, PenSettings>;
   activePen: PenId;
   shapeCorrection: boolean;
 };
 export const defaultPreferences = (): Preferences => ({
-  theme: "system",
+  theme: "system", accent: "green", paperColor: "auto", paperPattern: "grid",
   pens: {
     pen1: { color: "#243d35", width: 3, pressure: true },
     pen2: { color: "#376fac", width: 3, pressure: true },
@@ -29,6 +33,10 @@ export function readPreferences(value: unknown): Preferences {
   const base = defaultPreferences();
   if (!value || typeof value !== "object") return base;
   const v = value as Partial<Preferences>;
+  if (v.accent && ["green","blue","rose"].includes(v.accent)) base.accent=v.accent;
+  if (v.paperColor === "auto" || /^#[0-9a-f]{6}$/i.test(v.paperColor || "")) base.paperColor=v.paperColor!;
+  if (v.paperPattern && ["blank","ruled","grid"].includes(v.paperPattern)) base.paperPattern=v.paperPattern;
+  if (typeof v.paperImage === "string" && v.paperImage.length < 30000000 && /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(v.paperImage)) base.paperImage=v.paperImage;
   if (v.theme && ["system", "light", "dark"].includes(v.theme))
     base.theme = v.theme;
   for (const key of Object.keys(base.pens) as PenId[]) {

@@ -6,12 +6,12 @@ export function newPageFrom(previous: Page | undefined, dark: boolean): Page {
   const page = newPage();
   if (!previous) return {...page, paperColor: dark ? DARK_PAPER : LIGHT_PAPER};
   return {...page, width: previous.width, height: previous.height, paper: previous.paper,
-    paperColor: pagePaperColor(previous, dark)};
+    paperColor: pagePaperColor(previous, dark), backgroundImage: previous.pdfIndex === undefined ? previous.backgroundImage : undefined};
 }
 export function applyPaperTemplate(pages: Page[], source: Page, dark: boolean): Page[] {
   if (source.pdfIndex !== undefined) return pages;
   const paperColor = pagePaperColor(source, dark);
-  return pages.map((page) => page.pdfIndex !== undefined ? page : {...page, paper: source.paper, paperColor});
+  return pages.map((page) => page.pdfIndex !== undefined ? page : {...page, paper: source.paper, paperColor, backgroundImage: source.backgroundImage});
 }
 export function isDarkColor(color: string) {
   const rgb = [1, 3, 5]
