@@ -20,7 +20,9 @@ export function PageTemplateDialog({page,number,dark,onChange,onApply,onClose}:P
  <header><h2 id="page-template-title">ページ {number} のテンプレート</h2><button aria-label="テンプレート設定を閉じる" onClick={onClose}>×</button></header>
  <p>変更はこのページに自動保存されます。</p>
  <label>用紙<select aria-label="ページの用紙パターン" value={page.paper} onChange={e=>onChange({paper:e.target.value as Page["paper"]})}><option value="blank">白紙</option><option value="ruled">罫線</option><option value="grid">方眼</option></select></label>
- <label>用紙色<input type="color" aria-label="ページの用紙色" value={pagePaperColor(page,dark)} onChange={e=>onChange({paperColor:e.target.value})}/></label>
+ <label>用紙色<select aria-label="ページの用紙色プリセット" value={["#fffefa","#fff7dc","#e9edf2","#1e2822","#20252d"].includes(pagePaperColor(page,dark))?pagePaperColor(page,dark):"custom"} onChange={e=>{if(e.target.value!=="custom")onChange({paperColor:e.target.value});}}>
+ <option value="#fffefa">白</option><option value="#fff7dc">クリーム</option><option value="#e9edf2">グレー</option><option value="#1e2822">ダークグリーン</option><option value="#20252d">ダークグレー</option><option value="custom">カスタム</option></select></label>
+ <label>カスタム色<input type="color" aria-label="ページの用紙色" value={pagePaperColor(page,dark)} onChange={e=>onChange({paperColor:e.target.value})}/></label>
  <label>背景画像<input disabled={loading} type="file" aria-label="ページの背景画像" accept="image/*" onChange={e=>{
   const file=e.target.files?.[0];e.target.value="";if(!file)return;
   const epoch=++request.current;setError("");setLoading(true);

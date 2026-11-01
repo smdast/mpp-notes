@@ -1,3 +1,4 @@
+import { ChevronRight as PathChevron } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
   BookOpen,
@@ -117,18 +118,14 @@ export function Library({
         <button onClick={() => onFolder("*")}>すべてのノート</button>
         {folder === "" ? (
           <>
-            <span className="path-separator" aria-hidden="true">
-              &gt;
-            </span>
+            <PathChevron className="path-separator" size={13} aria-hidden="true"/>
             <span>未分類</span>
           </>
         ) : (
           folder !== "*" &&
           folder.split("/").map((part, i) => (
             <span key={i}>
-              <span className="path-separator" aria-hidden="true">
-                &gt;
-              </span>
+              <PathChevron className="path-separator" size={13} aria-hidden="true"/>
               <button
                 onClick={() =>
                   onFolder(

@@ -1,3 +1,4 @@
+import { ChevronRight as PathChevron } from "lucide-react";
 import { Fragment } from "react";
 export const displayPath = (path: string) =>
   path.split("/").filter(Boolean).join(" > ");
@@ -22,9 +23,7 @@ export function Breadcrumb({
       {parts.map((part, i) => (
         <Fragment key={i}>
           {i > 0 && (
-            <span className="path-separator" aria-hidden="true">
-              &gt;
-            </span>
+            <PathChevron className="path-separator" size={13} aria-hidden="true"/>
           )}
           {onFolder ? (
             <button onClick={() => onFolder(parts.slice(0, i + 1).join("/"))}>
@@ -37,9 +36,7 @@ export function Breadcrumb({
       ))}
       {title && (
         <>
-          <span className="path-separator" aria-hidden="true">
-            &gt;
-          </span>
+          <PathChevron className="path-separator" size={13} aria-hidden="true"/>
           <strong>{title}</strong>
         </>
       )}

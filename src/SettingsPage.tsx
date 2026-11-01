@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, type ReactNode } from "react";
-import { Palette, Cloud, Archive, Info, CircleHelp } from "lucide-react";
+import { Palette, Cloud, Archive, Info, CircleHelp, ArrowLeft } from "lucide-react";
 import packageInfo from "../package.json";
 import type { Preferences } from "./preferences";
 import { isDarkColor } from "./paper";
@@ -15,7 +15,7 @@ export function SettingsPage({value,onChange,onClose,drive,backup,restore,help,p
  function selectTab(id:string){setTab(id);const url=new URL(location.href);url.searchParams.set("tab",id);window.history.pushState(null,"",url);}
  const color=value.paperColor==="auto"?(value.theme==="dark"||(value.theme==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)?"#1e2822":"#fffefa"):value.paperColor;
  return <section className="settings-page settings-route" aria-label="設定">
- <div className="settings-inner"><header><button onClick={onClose}>← 戻る</button><h1>設定</h1></header>
+ <div className="settings-inner"><header><button onClick={onClose} aria-label="戻る"><ArrowLeft size={18} aria-hidden="true"/>戻る</button><h1>設定</h1></header>
  <div className="settings-layout"><nav className="settings-nav" role="tablist" aria-label="設定項目">{tabs.map(({id,label,Icon})=><button key={id} role="tab" id={"tab-"+id} aria-selected={tab===id} aria-controls="settings-panel" onClick={()=>selectTab(id)}><Icon size={19}/><span>{label}</span></button>)}</nav><div className="settings-content" role="tabpanel" id="settings-panel" aria-labelledby={"tab-"+tab}>
  {error&&<p role="alert">{error}</p>}{tab==="theme"&&<><h2>表示テーマ</h2><div className="settings-choices">{(["system","light","dark"] as const).map((theme,i)=><button aria-pressed={value.theme===theme} key={theme} onClick={()=>update({theme})}><span className={"theme-preview "+theme}><i/><b/><em/></span>{["システム","ライト","ダーク"][i]}</button>)}</div>
  <h2>テーマの色味</h2><div className="settings-choices">{(["green","blue","rose"] as const).map((accent,i)=><button aria-pressed={value.accent===accent} key={accent} onClick={()=>update({accent})}><span className="accent-preview" style={{background:["#345d48","#365b88","#92546d"][i]}}/>{["フォレスト","ブルー","ローズ"][i]}</button>)}</div>

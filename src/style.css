@@ -2861,3 +2861,15 @@ main {
 .page-template-dialog input[type="file"] {max-width:100%;font-size:12px;}
 .page-template-dialog p {font-size:12px;line-height:1.8;}
 :root:has(.page-template-dialog) .selection-popup {display:none;}
+.view-editor .page-strip {width:112px;padding-left:12px;padding-right:12px;}
+.page-list {overflow-x:hidden;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;}
+.page-list::-webkit-scrollbar,.page-strip::-webkit-scrollbar {display:none;width:0;height:0;}
+.page-strip {overflow-x:hidden;scrollbar-width:none;}
+.page-item {box-sizing:border-box;width:100%;}
+.page-more {right:0;}
+.page-context-menu {width:170px;padding:5px;}
+.page-context-menu>button {padding:7px 6px;gap:6px;white-space:nowrap;}
+.path-separator {display:inline-block;vertical-align:middle;flex-shrink:0;padding:0;}
+@media(max-width:650px){.view-editor .page-strip{width:92px;padding-left:8px;padding-right:8px;}}
+.view-editor .page-strip .mini-paper {width:66px;height:91px;}
+@media(max-width:650px){.view-editor .page-strip .mini-paper{width:56px;height:78px;}}

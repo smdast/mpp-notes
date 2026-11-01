@@ -41,7 +41,7 @@ export function PageSidebar(props:Props){
   const target=item?{id:item.dataset.sidePage!,after:e.clientY>item.getBoundingClientRect().top+item.getBoundingClientRect().height/2}:null;if(g.started&&!cancel&&target)callbacks.current.onReorder(g.id,target.id,target.after);
   setDrag(null);setDrop(null);dropRef.current=null;setTimeout(()=>{suppress.current=false;},0);
  }
- function open(e:React.MouseEvent<HTMLButtonElement>,id:string){anchor.current=e.currentTarget;const r=e.currentTarget.getBoundingClientRect();props.onSelect(id);setMenu({id,x:Math.min(innerWidth-230,Math.max(8,r.right+8)),y:Math.max(8,Math.min(innerHeight-235,r.top))});}
+ function open(e:React.MouseEvent<HTMLButtonElement>,id:string){anchor.current=e.currentTarget;const r=e.currentTarget.getBoundingClientRect();props.onSelect(id);setMenu({id,x:Math.min(innerWidth-180,Math.max(8,r.right+8)),y:Math.max(8,Math.min(innerHeight-235,r.top))});}
  return <aside className="page-strip" aria-label="ページ一覧"><span className="page-strip-heading">ページ <small>{props.pages.length}</small></span><div ref={list} className="page-list" onScroll={()=>setMenu(null)}>
  {props.pages.map((p,i)=><div key={p.id} data-side-page={p.id} className={"page-item "+(drag===p.id?"dragging ":"")+(drop?.id===p.id?(drop.after?"drop-after":"drop-before"):"")}>
  <button className={"page-thumb "+(props.active===p.id?"current":"")} aria-label={`ページ ${i+1}`} aria-current={props.active===p.id?"page":undefined} onClick={()=>{if(!suppress.current)props.onSelect(p.id);}} onPointerDown={e=>down(e,p.id)} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)}>

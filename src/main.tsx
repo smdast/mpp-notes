@@ -626,7 +626,7 @@ function App() {
                 </button>
                 <span className="breadcrumb-library">
                   <Breadcrumb folder={note?.folder} />
-                  <span className="path-separator">&gt;</span>
+                  <ChevronRight className="path-separator" size={13} aria-hidden="true"/>
                 </span>
                 <strong>{note?.title || "ノートをはじめよう"}</strong>
                 {note && (

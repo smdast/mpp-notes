@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, RefreshCw, WifiOff } from "lucide-react";
 import { registerSW } from "virtual:pwa-register";
+import { checkAppUpdate } from "./updates";
 type InstallEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: string }>;
@@ -9,7 +10,9 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
   const [install, setInstall] = useState<InstallEvent | null>(null),
     [offline, setOffline] = useState(false),
     [update, setUpdate] = useState(false),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    [checking, setChecking] = useState(false);
+  const registration = useRef<ServiceWorkerRegistration | undefined>(undefined);
   const reload = useRef<((reload?: boolean) => Promise<void>) | null>(null),
     allowed = useRef(canReload);
   allowed.current = canReload;
@@ -24,8 +27,9 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
     if ("serviceWorker" in navigator)
       reload.current = registerSW({
         immediate: true,
+        onRegisteredSW: (_url, value) => { registration.current = value; },
         onOfflineReady: () => setOffline(true),
-        onNeedRefresh: () => setUpdate(true),
+        onNeedRefresh: () => {setUpdate(true);setMessage("新しいバージョンがあります。");},
         onRegisterError: () =>
           setMessage(
             "オフラインの準備に失敗しました。通信できる状態で再読み込みしてください。",
@@ -38,6 +42,20 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
   }, []);
   return (
     <div className="pwa-controls">
+      <button disabled={checking} onClick={()=>{
+        if(!navigator.onLine){setMessage("オフラインです。通信できる状態で更新を確認してください。");return;}
+        setChecking(true);setMessage("");
+        void (async()=>{
+          try {
+            const value=registration.current || ("serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration(new URL("./",document.baseURI).href) : undefined);
+            if(!value){setMessage("更新を確認できません。公開アプリで再読み込みしてお試しください。");return;}
+            const result=await checkAppUpdate(value);
+            if(result==="available"){setUpdate(true);setMessage("新しいバージョンがあります。");}
+            else setMessage(result==="current"?"最新のバージョンです。":"更新を準備中です。しばらくして再度確認してください。");
+          }catch{setMessage("更新を確認できませんでした。通信を確認して再度お試しください。");}
+          finally{setChecking(false);}
+        })();
+      }}><RefreshCw size={14}/>{checking?"更新を確認中…":"更新を確認"}</button>
       {install && (
         <button
           onClick={() =>
