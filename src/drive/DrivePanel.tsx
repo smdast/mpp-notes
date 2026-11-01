@@ -2,31 +2,11 @@ import { Cloud, X, RefreshCw } from "lucide-react";
 import type { useDriveSync } from "./useDriveSync";
 export function DrivePanel({
   drive,
-  onClose,
 }: {
   drive: ReturnType<typeof useDriveSync>;
-  onClose: () => void;
 }) {
   return (
-    <div
-      className="modal-backdrop"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <section
-        className="modal drive-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="drive-title"
-      >
-        <button
-          title="Drive設定を閉じる"
-          className="modal-close icon-button"
-          onClick={onClose}
-        >
-          <X size={18} />
-        </button>
+    <section className="drive-panel inline-drive">
         <span className="modal-symbol">
           <Cloud size={23} />
         </span>
@@ -87,7 +67,6 @@ export function DrivePanel({
           <summary>同期について</summary>
           <p>自動同期はアプリ使用中に動きます。オフラインでは端末保存を続け、復帰後に再試行します。認証の期限切れ時は再接続が必要です。同時編集や削除との競合が起きた場合は、編集内容を競合コピーに残します。同期履歴はデータ保護のため保持します。</p>
         </details>
-      </section>
-    </div>
+    </section>
   );
 }

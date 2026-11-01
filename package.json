@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
+    "postbuild": "node scripts/settings-route.mjs",
     "predev": "node scripts/copy-pdf-assets.mjs",
     "prebuild": "node scripts/copy-pdf-assets.mjs"
   },

@@ -69,6 +69,7 @@ import {
 } from "./preferences";
 import "./style.css";
 import { FolderNav } from "./FolderNav";
+import { HelpContent } from "./HelpContent";
 import { SettingsPage } from "./SettingsPage";
 import { imageStroke } from "./images";
 import { PWAControls } from "./PWAControls";
@@ -81,12 +82,15 @@ type Dialog = {
   value?: string;
 };
 function App() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [driveOpen, setDriveOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(()=>/\/settings\/?$/.test(location.pathname)||location.hash==="#/settings");
+  const settingsReturn = useRef(location.pathname + location.search + location.hash);
+  function openSettings(){settingsReturn.current=location.pathname+location.search+location.hash;window.history.pushState(null,"",new URL("settings",document.baseURI));setSettingsOpen(true);}
+  function closeSettings(){window.history.pushState(null,"",settingsReturn.current.includes("settings")?new URL("./#/library",document.baseURI):settingsReturn.current);setSettingsOpen(false);window.dispatchEvent(new PopStateEvent("popstate"));}
+
   const [view, setView] = useState<"library" | "editor">("library");
   const [preferences, setPreferences] =
     useState<Preferences>(defaultPreferences);
-  const dark = useTheme(preferences.theme);
+  const dark = useTheme(preferences.theme,preferences.accent);
   useEffect(()=>{document.documentElement.dataset.accent=preferences.accent;},[preferences.accent]);
   function freshNote(title?:string){const n=newNote(title);const p=preferencesRef.current;n.pages[0]={...n.pages[0],paper:p.paperPattern,paperColor:p.paperColor==="auto"?undefined:p.paperColor,backgroundImage:p.paperImage};return n;}
   function backupAction(){void run("バックアップを作成中",async()=>download(makeBackup(notes,folders),`mpp-notes-${new Date().toISOString().slice(0,10)}.zip`,"application/zip"));}
@@ -115,6 +119,7 @@ function App() {
     [folder, setFolder] = useState("*");
   const [eraserMode, setEraserMode] = useState<EraserMode>("stroke"),
     [eraserSize, setEraserSize] = useState(24);
+  const activeRouteNote=useRef(noteId);activeRouteNote.current=noteId;
   const histories = useRef(new Map<string, History>()),
     queue = useRef(Promise.resolve()),
     pending = useRef(0),
@@ -225,17 +230,19 @@ function App() {
   useEffect(() => {
     const route = () => {
       if (!ready) return;
+      const settings=/\/settings\/?$/.test(location.pathname)||location.hash==="#/settings";setSettingsOpen(settings);if(settings)return;
       const match = window.location.hash.match(/^#\/note\/(.+)$/);
       const found = match && notesRef.current.find((n) => n.id === match[1]);
       if (found) {
         setNoteId(found.id);
-        goPage(found.pages[0].id);
+        if(activeRouteNote.current!==found.id)goPage(found.pages[0].id);
         setView("editor");
       } else setView("library");
     };
     window.addEventListener("hashchange", route);
+    window.addEventListener("popstate", route);
     route();
-    return () => window.removeEventListener("hashchange", route);
+    return () => {window.removeEventListener("hashchange", route);window.removeEventListener("popstate", route);};
   }, [ready]);
   const history = page ? histories.current.get(page.id) : undefined;
   function enqueue(op: () => Promise<unknown>) {
@@ -538,7 +545,7 @@ function App() {
     : ["#243d35", "#202b39", "#376fac", "#bd6263", "#bd8d39", "#8466a5"];
   return (
     <div className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
-      {view === "library" && (
+      {view === "library" && !settingsOpen && (
         <aside className="sidebar">
           <a className="brand" href="./">
             <span className="brand-icon">
@@ -580,13 +587,13 @@ function App() {
             <FileUp size={17} />
             PDFを取り込む
           </button>
-          <button className="import-button" onClick={()=>setSettingsOpen(true)}>⚙ 設定</button>
+          <button className="import-button" onClick={openSettings}>⚙ 設定</button>
         </aside>
       )}
-      <main>
+      <main hidden={settingsOpen}>
         {view === "library" ? (
           <Library
-            driveControl={<button className="export-button" onClick={()=>setSettingsOpen(true)}>⚙ 設定</button>}
+            driveControl={<button className="export-button" onClick={openSettings}>⚙ 設定</button>}
             themeControl={null}
             dark={dark}
             onCover={(n,file)=>{if(!file){updateNote({...n,coverImage:undefined});return;}void run("表紙画像を読み込み中",async()=>{const image=await imageStroke(file,{width:794,height:1123});const current=notesRef.current.find(x=>x.id===n.id);if(current)updateNote({...current,coverImage:image.image});});}}
@@ -686,7 +693,7 @@ function App() {
                 )}
               </div>
               <div className="top-actions">
-                <button className="icon-button" title="設定" onClick={()=>setSettingsOpen(true)}>⚙</button>
+                <button className="icon-button" title="設定" onClick={openSettings}>⚙</button>
                 <span
                   className={
                     "save-status " + (saveStatus === "保存失敗" ? "failed" : "")
@@ -1027,13 +1034,10 @@ function App() {
           if (f) void restore(f);
         }}
       />
-      {settingsOpen && <SettingsPage onApply={view==="editor"&&note?.pages.some(p=>p.pdfIndex===undefined)?()=>{if(!note||!page)return;const p=preferencesRef.current;updateNote({...note,pages:applyPaperTemplate(note.pages,{...page,pdfIndex:undefined,paper:p.paperPattern,paperColor:p.paperColor==="auto"?(dark?"#1e2822":"#fffefa"):p.paperColor,backgroundImage:p.paperImage},dark)});}:undefined} value={preferences} onChange={storePreferences} onClose={()=>setSettingsOpen(false)}
-        drive={<button className="primary" onClick={()=>setDriveOpen(true)}>Google Drive連携 · {drive.status}</button>}
-        backup={backupAction} restore={()=>backupInput.current?.click()} help={()=>setDialog({kind:"help"})}
+      {settingsOpen && <SettingsPage ready={ready} onApply={view==="editor"&&note?.pages.some(p=>p.pdfIndex===undefined)?()=>{if(!note||!page)return;const p=preferencesRef.current;updateNote({...note,pages:applyPaperTemplate(note.pages,{...page,pdfIndex:undefined,paper:p.paperPattern,paperColor:p.paperColor==="auto"?(dark?"#1e2822":"#fffefa"):p.paperColor,backgroundImage:p.paperImage},dark)});}:undefined} value={preferences} onChange={storePreferences} onClose={closeSettings}
+        drive={<DrivePanel drive={drive}/>}
+        backup={backupAction} restore={()=>backupInput.current?.click()} help={<HelpContent/>}
         pwa={<PWAControls canReload={()=>pending.current===0&&!failed.current&&!writing.current}/>} onError={setError} error={error}/>}
-      {driveOpen && (
-        <DrivePanel drive={drive} onClose={() => setDriveOpen(false)} />
-      )}
       {busy && (
         <div className="busy-overlay" role="status">
           <LoaderCircle className="spin" size={25} />

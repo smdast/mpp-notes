@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun, Monitor } from "lucide-react";
 import type { Theme } from "./preferences";
-export function useTheme(theme: Theme) {
+export function useTheme(theme: Theme, accent: "green" | "blue" | "rose" = "green") {
   const [dark, setDark] = useState(
     () =>
       theme === "dark" ||
@@ -18,12 +18,12 @@ export function useTheme(theme: Theme) {
       document.documentElement.style.colorScheme = resolved;
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", resolved === "dark" ? "#17221c" : "#eef1ec");
+        ?.setAttribute("content", accent === "blue" ? (resolved === "dark" ? "#141f2c" : "#edf2f8") : accent === "rose" ? (resolved === "dark" ? "#281a22" : "#f7eff2") : resolved === "dark" ? "#17221c" : "#eef1ec");
     };
     apply();
     query.addEventListener("change", apply);
     return () => query.removeEventListener("change", apply);
-  }, [theme]);
+  }, [theme, accent]);
   return dark;
 }
 export function ThemeControl({
