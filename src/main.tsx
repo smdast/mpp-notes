@@ -74,12 +74,15 @@ import { SettingsPage } from "./SettingsPage";
 import { imageStroke } from "./images";
 import { PWAControls } from "./PWAControls";
 import { clampZoom } from "./scrolling";
+import { PageSidebar } from "./PageSidebar";
+import { reorderPages, duplicatePage, insertedPage } from "./pages";
 import { EditorToolbar } from "./EditorToolbar";
 import { newPageFrom, applyPaperTemplate } from "./paper";
 import type { EraserMode } from "./editing";
 type Dialog = {
   kind: "new" | "rename" | "deleteNote" | "deletePage" | "help";
   value?: string;
+  pageId?: string;
 };
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(()=>/\/settings\/?$/.test(location.pathname)||location.hash==="#/settings");
@@ -386,7 +389,7 @@ function App() {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
-        dialog || settingsOpen ||
+        dialog || settingsOpen || document.querySelector(".page-context-menu") ||
         busy
       )
         return;
@@ -501,22 +504,11 @@ function App() {
       }
       library();
     }
-    if (dialog.kind === "deletePage" && note && page && note.pages.length > 1) {
-      const pages = note.pages.filter((p) => p.id !== page.id);
-      updateNote({ ...note, pages });
-      goPage(pages[Math.max(0, pageIndex - 1)].id);
-      histories.current.delete(page.id);
+    if(dialog.kind === "deletePage" && note && note.pages.length>1){
+      const id=dialog.pageId||page?.id; const index=note.pages.findIndex(p=>p.id===id);
+      if(index>=0){const pages=note.pages.filter(p=>p.id!==id);updateNote({...note,pages});goPage(pages[Math.min(index,pages.length-1)].id);histories.current.delete(id!);}
     }
     setDialog(null);
-  }
-  function movePage(direction: number) {
-    if (!note) return;
-    const index = pageIndex + direction;
-    if (index < 0 || index >= note.pages.length) return;
-    const pages = [...note.pages];
-    [pages[index], pages[pageIndex]] = [pages[pageIndex], pages[index]];
-    updateNote({ ...note, pages });
-    if (page) goPage(page.id);
   }
   function addPage() {
     if (!note) return;
@@ -749,135 +741,15 @@ function App() {
             )}
             {ready && page && note ? (
               <div className="workspace">
-                <div className="page-strip">
-                  <span className="page-strip-heading">
-                    ページ <small>{note.pages.length}</small>
-                  </span>
-                  <div className="page-list">
-                    {note.pages.map((p, i) => (
-                      <button
-                        key={p.id}
-                        className={
-                          "page-thumb " + (p.id === page.id ? "current" : "")
-                        }
-                        onClick={() => goPage(p.id)}
-                        aria-label={`ページ ${i + 1}`}
-                        aria-current={p.id === page.id ? "page" : undefined}
-                      >
-                        <span
-                          style={{ backgroundColor: pagePaperColor(p, dark) }}
-                          className={
-                            "mini-paper " +
-                            (p.pdfIndex !== undefined ? "pdf-paper" : p.paper)
-                          }
-                        >
-                          {p.pdfIndex !== undefined ? (
-                            <span>
-                              PDF
-                              <br />
-                              <b>{p.pdfIndex + 1}</b>
-                            </span>
-                          ) : (
-                            <span>{String(i + 1).padStart(2, "0")}</span>
-                          )}
-                          <span className="mini-ink">
-                            {p.strokes.length > 0 ? "〰" : ""}
-                          </span>
-                        </span>
-                        <small>{i + 1}</small>
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    className="add-page"
-                    title="ページ追加"
-                    onClick={addPage}
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
+                <PageSidebar pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
+                  onInsert={(id,after)=>{const result=insertedPage(note.pages,id,after,dark);if(result){updateNote({...note,pages:result.pages});goPage(result.page.id);}}}
+                  onDuplicate={(id)=>{const source=note.pages.find(p=>p.id===id);if(!source)return;const copy=duplicatePage(source),index=note.pages.indexOf(source)+1;updateNote({...note,pages:[...note.pages.slice(0,index),copy,...note.pages.slice(index)]});goPage(copy.id);}}
+                  onDelete={(id)=>setDialog({kind:"deletePage",pageId:id})}
+                  onReorder={(from,to,after)=>{const pages=reorderPages(note.pages,from,to,after);if(pages!==note.pages){updateNote({...note,pages});goPage(from);}}}
+                  onTemplate={(id,patch)=>{const current=notesRef.current.find(n=>n.id===note.id);if(!current)return;updateNote({...current,pages:current.pages.map(p=>p.id===id&&p.pdfIndex===undefined?{...p,...patch}:p)});}}
+                  onApply={(id)=>{const source=note.pages.find(p=>p.id===id);if(source)updateNote({...note,pages:applyPaperTemplate(note.pages,source,dark)});}}
+                  onError={setError}/>
                 <section className="desk">
-                  <div className="desk-options">
-                    <label className="paper-color-select">
-                      用紙色
-                      <select
-                        aria-label="用紙の色"
-                        value={page.paperColor || currentPaperColor}
-                        disabled={page.pdfIndex !== undefined}
-                        onChange={(e) =>
-                          updatePage({
-                            ...page,
-                            paperColor:
-                              e.target.value === "auto"
-                                ? dark
-                                  ? "#1e2822"
-                                  : "#fffefa"
-                                : e.target.value,
-                          })
-                        }
-                      >
-                        <option value="auto">テーマの既定色</option>
-                        {[
-                          ["#fffefa", "白"],
-                          ["#fff7dc", "クリーム"],
-                          ["#e9edf2", "薄いグレー"],
-                          ["#1e2822", "ダークグリーン"],
-                          ["#20252d", "ダークグレー"],
-                        ].map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                        {page.paperColor &&
-                          ![
-                            "#fffefa",
-                            "#fff7dc",
-                            "#e9edf2",
-                            "#1e2822",
-                            "#20252d",
-                          ].includes(page.paperColor) && (
-                            <option value={page.paperColor}>カスタム</option>
-                          )}
-                      </select>
-                      <input
-                        type="color"
-                        aria-label="用紙のカスタム色"
-                        value={currentPaperColor}
-                        disabled={page.pdfIndex !== undefined}
-                        onChange={(e) =>
-                          updatePage({ ...page, paperColor: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label className="paper-select">
-                      用紙{" "}
-                      <select
-                        aria-label="用紙の種類"
-                        value={page.pdfIndex !== undefined ? "pdf" : page.paper}
-                        disabled={page.pdfIndex !== undefined}
-                        onChange={(e) =>
-                          updatePage({
-                            ...page,
-                            paper: e.target.value as Page["paper"],
-                          })
-                        }
-                      >
-                        {page.pdfIndex !== undefined ? (
-                          <option value="pdf">PDF</option>
-                        ) : (
-                          <>
-                            <option value="blank">白紙</option>
-                            <option value="ruled">罫線</option>
-                            <option value="grid">方眼</option>
-                          </>
-                        )}
-                      </select>
-                      <ChevronDown size={13} />
-                    </label>
-                    <button className="apply-paper" disabled={page.pdfIndex !== undefined}
-                      title="用紙の種類と色を全ページに適用（PDFの背景は保持）"
-                      onClick={() => updateNote({...note, pages: applyPaperTemplate(note.pages, page, dark)})}>全ページに適用</button>
-                  </div>
                   <ContinuousNotebook
                     dark={dark}
                     activePageId={page.id}
@@ -938,56 +810,7 @@ function App() {
                       <Maximize2 size={15} />
                     </button>
                   </div>
-                  <footer className="statusbar">
-                    <span>
-                      <span className="green-dot" />
-                      {mouse ? "ペン・マウス入力" : "MPP / ペン入力"}
-                      <span className="status-hint">
-                        指で移動・2本指で拡大縮小
-                      </span>
-                    </span>
-                    <div>
-                      <button
-                        title="ページを前へ移動"
-                        disabled={pageIndex === 0}
-                        onClick={() => movePage(-1)}
-                      >
-                        <ArrowUp size={14} />
-                      </button>
-                      <button
-                        title="ページを後ろへ移動"
-                        disabled={pageIndex === note.pages.length - 1}
-                        onClick={() => movePage(1)}
-                      >
-                        <ArrowDown size={14} />
-                      </button>
-                      <button
-                        title="ページ削除"
-                        disabled={note.pages.length === 1}
-                        onClick={() => setDialog({ kind: "deletePage" })}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <i />
-                      <button
-                        title="前のページ"
-                        disabled={pageIndex === 0}
-                        onClick={() => goPage(note.pages[pageIndex - 1].id)}
-                      >
-                        <ChevronLeft size={15} />
-                      </button>
-                      <span>
-                        {pageIndex + 1} / {note.pages.length}
-                      </span>
-                      <button
-                        title="次のページ"
-                        disabled={pageIndex === note.pages.length - 1}
-                        onClick={() => goPage(note.pages[pageIndex + 1].id)}
-                      >
-                        <ChevronRight size={15} />
-                      </button>
-                    </div>
-                  </footer>
+
                 </section>
               </div>
             ) : (

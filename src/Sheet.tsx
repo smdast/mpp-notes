@@ -171,7 +171,7 @@ export function Sheet({
   }
   function canPaste(target: EventTarget | null) {
     return live.current.isActive && !editableTarget(target) && active.current === null &&
-      !document.querySelector('.modal-backdrop,.busy-overlay,.settings-page');
+      !document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu');
   }
   async function pasteContent(strokes?: Stroke[] | null, image?: Blob) {
     if (pasting.current || !canPaste(null)) return;
@@ -245,7 +245,7 @@ export function Sheet({
         tool !== "lasso" ||
         !selected.current.size ||
         editableTarget(e.target) ||
-        document.querySelector('.modal-backdrop,.busy-overlay,.settings-page')
+        document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu')
       )
         return;
       if (e.key === "Delete" || e.key === "Backspace") {
