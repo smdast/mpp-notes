@@ -9,6 +9,7 @@ import { pagePoint, uid, type Page, type Point, type Stroke } from "./model";
 import {
   erase,
   selectLasso,
+  imageAtPoint,
   moveSelection,
   transformSelection,
   selectionBounds,
@@ -422,8 +423,9 @@ export function Sheet({
   function down(e: RPointerEvent<HTMLCanvasElement>) {
     const p = point(e);
     const hit = tool === "lasso" ? selectionHit(selectionBounds(page.strokes, selected.current), p, zoom) : null;
+    const image = tool === "lasso" && !hit ? imageAtPoint(page.strokes, p) : undefined;
     if (
-      (e.pointerType === "touch" && !hit) ||
+      (e.pointerType === "touch" && !hit && !image) ||
       tool === "hand" ||
       (e.pointerType === "mouse" && !mouse && tool !== "lasso") ||
       e.button === 1
@@ -449,7 +451,11 @@ export function Sheet({
       } else if (hit && hit.kind !== "move") {
         transform.current = {kind:"scale",start:p,cx:hit.cx,cy:hit.cy,handle:hit};
         setEditingSelection(true);
-      } else if (hit?.kind === "move") {
+      } else if (hit?.kind === "move" || image) {
+        if (image) {
+          selected.current = new Set([image.id]);
+          refreshSelection(v => v + 1);
+        }
         moving.current = p;
         setEditingSelection(true);
       } else {

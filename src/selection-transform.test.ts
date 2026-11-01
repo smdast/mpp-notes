@@ -1,5 +1,5 @@
 import {it, expect} from "vitest";
-import {selectionHandles, selectionHit, selectionScale, transformSelection, moveSelection} from "./editing";
+import {selectionHandles, selectionHit, selectionScale, transformSelection, moveSelection, imageAtPoint} from "./editing";
 import type {Point, Stroke} from "./model";
 const p=(x:number,y:number):Point=>({x,y,p:0.7});
 const bounds={left:10,top:20,right:210,bottom:120};
@@ -51,4 +51,26 @@ it("moves pasted image corners and ink together without mutating originals",()=>
  expect(result[0].points[0]).toEqual(p(35,8));expect(result[0].image).toBe(image.image);
  expect(result[1].points[0]).toEqual(p(55,28));expect(result[2]).toBe(other);
  expect(image.points[0]).toEqual(p(10,20));
+});
+
+it("preserves line thickness, pressure and style through uniform and one-axis scaling",()=>{
+ for (const width of [0.05,0.2,3,20,100]) {
+  const ink:Stroke={id:"ink",tool:"pen",width,color:"#abcdef",pressure:true,dashed:true,points:[p(10,20),p(20,40)]};
+  for (const scale of [{scaleX:3,scaleY:3},{scaleX:0.05,scaleY:1},{scaleX:1,scaleY:20}]) {
+   const result=transformSelection([ink],new Set(["ink"]),{...scale,cx:0,cy:0})[0];
+   expect(result.width).toBe(width);expect(result.points[0].p).toBe(.7);
+   expect(result).toMatchObject({color:ink.color,pressure:true,dashed:true});
+   expect(result.points[1].x).toBe(20*scale.scaleX);expect(result.points[1].y).toBe(40*scale.scaleY);
+  }
+ }
+});
+it("tap-selects only images, prioritizes the top image and respects rotated polygons",()=>{
+ const image:Stroke={id:"image",tool:"pen",width:.05,color:"#000000",image:"data:image/png;base64,test",points:[p(0,0),p(100,0),p(100,60),p(0,60)]};
+ const top={...image,id:"top"};const ink={...image,id:"ink",image:undefined};
+ expect(imageAtPoint([image,top,ink],p(40,30))).toBe(top);
+ expect(imageAtPoint([ink],p(40,30))).toBeUndefined();
+ expect(imageAtPoint([image],p(110,30))).toBeUndefined();
+ const rotated=transformSelection([image],new Set([image.id]),{angle:Math.PI/4,cx:50,cy:30})[0];
+ expect(imageAtPoint([rotated],p(50,30))).toBe(rotated);
+ expect(imageAtPoint([rotated],p(-5,-25))).toBeUndefined();
 });

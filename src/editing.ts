@@ -85,6 +85,13 @@ export function selectLasso(strokes: Stroke[], polygon: Point[]) {
       .map((s) => s.id),
   );
 }
+// Match the transformed image polygon, choosing the topmost pasted image.
+export function imageAtPoint(strokes: Stroke[], p: Point) {
+  for (let i = strokes.length - 1; i >= 0; i--) {
+    const s = strokes[i];
+    if (s.image && (inside(p, s.points) || hits(s, p, p, 0))) return s;
+  }
+}
 export function moveSelection(
   strokes: Stroke[],
   ids: Set<string>,
@@ -133,13 +140,11 @@ export function transformSelection(
   },
 ) {
   const c = Math.cos(angle),
-    s = Math.sin(angle),
-    weight = Math.sqrt(Math.abs(scaleX * scaleY));
+    s = Math.sin(angle);
   return strokes.map((stroke) =>
     ids.has(stroke.id)
       ? {
           ...stroke,
-          width: Math.max(0.05, Math.min(100, stroke.width * weight)),
           points: stroke.points.map((p) => {
             const x = (p.x - cx) * scaleX,
               y = (p.y - cy) * scaleY;

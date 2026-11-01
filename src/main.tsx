@@ -78,7 +78,6 @@ import { PageSidebar } from "./PageSidebar";
 import { reorderPages, duplicatePage, insertedPage } from "./pages";
 import { EditorToolbar } from "./EditorToolbar";
 import { newPageFrom, applyPaperTemplate } from "./paper";
-import type { EraserMode } from "./editing";
 type Dialog = {
   kind: "new" | "rename" | "deleteNote" | "deletePage" | "help";
   value?: string;
@@ -120,8 +119,8 @@ function App() {
     [historyRevision, setHistoryRevision] = useState(0);
   const [folders, setFolders] = useState<string[]>([]),
     [folder, setFolder] = useState("*");
-  const [eraserMode, setEraserMode] = useState<EraserMode>("stroke"),
-    [eraserSize, setEraserSize] = useState(24);
+  const eraserMode = preferences.eraserMode;
+  const [eraserSize, setEraserSize] = useState(24);
   const activeRouteNote=useRef(noteId);activeRouteNote.current=noteId;
   const histories = useRef(new Map<string, History>()),
     queue = useRef(Promise.resolve()),
@@ -728,7 +727,7 @@ function App() {
               eraserMode={eraserMode} eraserSize={eraserSize} mouse={mouse}
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}
               onUndo={undo} onTool={setTool} onPen={choosePen} onSettings={setPen} onColor={setColor}
-              onEraserMode={setEraserMode} onEraserSize={setEraserSize} onMouse={setMouse}
+              onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize} onMouse={setMouse}
               onShapeCorrection={(shapeCorrection) => storePreferences({...preferencesRef.current, shapeCorrection})}/>
             {error && (
               <div className="error-banner" role="alert">

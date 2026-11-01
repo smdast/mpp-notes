@@ -1,4 +1,4 @@
-import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus } from "lucide-react";
+import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, MousePointer2 } from "lucide-react";
 import type { Tool } from "./Sheet";
 import type { EraserMode } from "./editing";
 import { penColor } from "./paper";
@@ -45,15 +45,15 @@ export function EditorToolbar(props: Props) {
           {colors.map((c) => <button key={c} title={`色 ${c}`} aria-pressed={color === c} className={"swatch " + (color === c ? "chosen" : "")} style={{"--swatch":c} as React.CSSProperties} onClick={() => props.onColor(c)}/>)}
           <label className="custom-color" title="色を選ぶ"><Plus size={13}/><input type="color" aria-label="カスタム色" value={color} onChange={(e) => props.onColor(e.target.value)}/></label>
         </div>
-        <label className="size-slider">太さ<input type="range" aria-label="線の太さ" min={1} max={20} step={1} value={settings.width} onChange={(e) => props.onSettings({width:Number(e.target.value)})}/><output>{settings.width} px</output></label>
+        <label className="size-slider pen-size-slider">太さ<input type="range" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(e) => props.onSettings({width:Number(e.target.value) / 5})}/><output>{Math.round(settings.width * 5)}</output></label>
         <div className="line-styles" role="group" aria-label="線の種類">
           {([{id:"solid",label:"実線"},{id:"dotted",label:"点線"},{id:"dashed",label:"破線"}] as const).map(({id,label}) =>
             <button key={id} title={label} aria-label={label} aria-pressed={style === id} onClick={() => props.onSettings({dotted:id === "dotted",dashed:id === "dashed"})}>
               <svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M3 6H41" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={id === "dotted" ? "0.1 6" : id === "dashed" ? "9 6" : undefined}/></svg><span>{label}</span>
             </button>)}
         </div>
-        <label className="setting-toggle"><input type="checkbox" aria-label="筆圧検知" checked={settings.pressure} onChange={(e) => props.onSettings({pressure:e.target.checked})}/>筆圧</label>
-        <label className="setting-toggle"><input type="checkbox" aria-label="図形補正" checked={preferences.shapeCorrection} onChange={(e) => props.onShapeCorrection(e.target.checked)}/>図形補正</label>
+        <label className="setting-toggle"><input type="checkbox" aria-label="筆圧検知" checked={settings.pressure} onChange={(e) => props.onSettings({pressure:e.target.checked})}/><Gauge size={15} aria-hidden="true"/>筆圧</label>
+        <label className="setting-toggle"><input type="checkbox" aria-label="図形補正" checked={preferences.shapeCorrection} onChange={(e) => props.onShapeCorrection(e.target.checked)}/><Shapes size={15} aria-hidden="true"/>図形補正</label>
       </div>}
       {tool === "eraser" && <div className="context-controls eraser-options" aria-label="消しゴムの設定">
         <div className="eraser-modes" role="group" aria-label="消しゴムの種類">
@@ -62,7 +62,7 @@ export function EditorToolbar(props: Props) {
         </div>
         <label className="size-slider">大きさ<input type="range" aria-label="消しゴムのサイズ" min={1} max={120} step={1} value={props.eraserSize} onChange={(e) => props.onEraserSize(Number(e.target.value))}/><output>{props.eraserSize} px</output></label>
       </div>}
-      {(drawing || tool === "eraser") && <label className="mouse-toggle"><input type="checkbox" aria-label="マウスでも描画" checked={props.mouse} onChange={(e) => props.onMouse(e.target.checked)}/><span>マウスでも描画</span></label>}
+      {(drawing || tool === "eraser") && <label className="mouse-toggle"><input type="checkbox" aria-label="マウスでも描画" checked={props.mouse} onChange={(e) => props.onMouse(e.target.checked)}/><MousePointer2 size={15} aria-hidden="true"/><span>マウスでも描画</span></label>}
     </div>
   </div>;
 }

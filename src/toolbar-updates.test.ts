@@ -38,14 +38,15 @@ it("keeps dash lengths independent of event sampling and renders empty gaps", ()
   expect(ctx.getImageData(26,20,1,1).data[3]).toBe(0);
   expect(ctx.getImageData(36,20,1,1).data[3]).toBeGreaterThan(200);
 });
-it("restores each integer pen width and migrates old half-pixel settings without changing old strokes", () => {
-  for (let width=1;width<=20;width++) {
+it("restores all 100 pen sizes and normalizes older settings without changing old strokes", () => {
+  for (let level=1;level<=100;level++) {
+    const width=level/5;
     const settings=defaultPreferences(); settings.pens.pen1.width=width; settings.pens.pen1.dashed=true;
     const restored=readPreferences(settings);
     expect(restored.pens.pen1.width).toBe(width); expect(restored.pens.pen1.dashed).toBe(true);
   }
   const old=defaultPreferences(); old.pens.pen1.width=2.5;
-  expect(readPreferences(old).pens.pen1.width).toBe(3);
+  expect(readPreferences(old).pens.pen1.width).toBe(2.6);
   const n=newNote();n.pages[0].strokes=[{...dashed,width:2.5}];
   expect(readBackupBundle(makeBackup([n])).notes[0].pages[0].strokes[0].width).toBe(2.5);
 });
