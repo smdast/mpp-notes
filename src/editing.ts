@@ -149,6 +149,47 @@ export function transformSelection(
       : stroke,
   );
 }
+export type SelectionBounds = {left: number; top: number; right: number; bottom: number};
+export type SelectionHandle = {kind: "corner" | "x" | "y"; x: number; y: number; cx: number; cy: number};
+export function selectionHandles(b: SelectionBounds): SelectionHandle[] {
+  const mx = (b.left + b.right) / 2, my = (b.top + b.bottom) / 2;
+  return [
+    {kind: "corner", x:b.left,y:b.top,cx:b.right,cy:b.bottom},
+    {kind: "corner", x:b.right,y:b.top,cx:b.left,cy:b.bottom},
+    {kind: "corner", x:b.left,y:b.bottom,cx:b.right,cy:b.top},
+    {kind: "corner", x:b.right,y:b.bottom,cx:b.left,cy:b.top},
+    {kind: "x", x:b.left,y:my,cx:b.right,cy:my},
+    {kind: "x", x:b.right,y:my,cx:b.left,cy:my},
+    {kind: "y", x:mx,y:b.top,cx:mx,cy:b.bottom},
+    {kind: "y", x:mx,y:b.bottom,cx:mx,cy:b.top},
+  ];
+}
+export function selectionHit(b: SelectionBounds | null, p: Point, zoom: number) {
+  if (!b) return null;
+  const mx = (b.left + b.right) / 2, my = (b.top + b.bottom) / 2;
+  if (Math.hypot(p.x-mx,p.y-(b.top-22/zoom)) < 12/zoom)
+    return {kind:"rotate" as const,cx:mx,cy:my};
+  const handles = selectionHandles(b);
+  const corner = handles.slice(0,4).find(h=>Math.hypot(p.x-h.x,p.y-h.y)<12/zoom);
+  if (corner) return corner;
+  const edge = handles.slice(4).find(h=>h.kind==="x"
+    ? Math.abs(p.x-h.x)<10/zoom && p.y>=b.top && p.y<=b.bottom
+    : Math.abs(p.y-h.y)<10/zoom && p.x>=b.left && p.x<=b.right);
+  if (edge) return edge;
+  return p.x>=b.left && p.x<=b.right && p.y>=b.top && p.y<=b.bottom
+    ? {kind:"move" as const} : null;
+}
+export function selectionScale(handle: SelectionHandle, dx: number, dy: number) {
+  const x=handle.x-handle.cx,y=handle.y-handle.cy;
+  const safe=(n:number)=>Math.max(0.05,Math.min(20,n));
+  // Project the drag onto the original diagonal, keeping both axes identical.
+  if(handle.kind==="corner") {
+    const scale=safe(1+(dx*x+dy*y)/Math.max(1,x*x+y*y));
+    return {scaleX:scale,scaleY:scale};
+  }
+  return {scaleX:handle.kind==="x"?safe(1+dx/(x||1)):1,
+    scaleY:handle.kind==="y"?safe(1+dy/(y||1)):1};
+}
 export function renderScale(
   width: number,
   height: number,

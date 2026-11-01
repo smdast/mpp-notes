@@ -12,6 +12,10 @@ import {
   moveSelection,
   transformSelection,
   selectionBounds,
+  selectionHandles,
+  selectionHit,
+  selectionScale,
+  type SelectionHandle,
   renderScale,
   type EraserMode,
 } from "./editing";
@@ -97,8 +101,7 @@ export function Sheet({
     start: Point;
     cx: number;
     cy: number;
-    startX: number;
-    startY: number;
+    handle?: SelectionHandle;
   } | null>(null);
   function clearSelection() {
     selected.current.clear();
@@ -296,12 +299,7 @@ export function Sheet({
         ctx.setLineDash([]);
         const size = 7 / zoom;
         ctx.fillStyle = isDarkColor(paperColor) ? "#c9e4b9" : "#fffefa";
-        for (const [x, y] of [
-          [b.left, b.top],
-          [b.right, b.top],
-          [b.left, b.bottom],
-          [b.right, b.bottom],
-        ]) {
+        for (const {x,y} of selectionHandles(b)) {
           ctx.fillRect(x - size / 2, y - size / 2, size, size);
           ctx.strokeRect(x - size / 2, y - size / 2, size, size);
         }
@@ -422,8 +420,10 @@ export function Sheet({
     );
   }
   function down(e: RPointerEvent<HTMLCanvasElement>) {
+    const p = point(e);
+    const hit = tool === "lasso" ? selectionHit(selectionBounds(page.strokes, selected.current), p, zoom) : null;
     if (
-      e.pointerType === "touch" ||
+      (e.pointerType === "touch" && !hit) ||
       tool === "hand" ||
       (e.pointerType === "mouse" && !mouse && tool !== "lasso") ||
       e.button === 1
@@ -440,54 +440,16 @@ export function Sheet({
     original.current = page.strokes;
     erasing.current =
       tool === "eraser" || (e.buttons & 32) !== 0 || (e.buttons & 2) !== 0;
-    const p = point(e);
     last.current = p;
     if (erasing.current) applyEraser(p, p);
     else if (tool === "lasso") {
-      const b = selectionBounds(page.strokes, selected.current);
-      const corners = b
-        ? [
-            [b.left, b.top, b.right, b.bottom],
-            [b.right, b.top, b.left, b.bottom],
-            [b.left, b.bottom, b.right, b.top],
-            [b.right, b.bottom, b.left, b.top],
-          ]
-        : [];
-      const corner = corners.find(
-        ([x, y]) => Math.hypot(p.x - x, p.y - y) < 12 / zoom,
-      );
-      const rotate =
-        b &&
-        Math.hypot(p.x - (b.left + b.right) / 2, p.y - (b.top - 22 / zoom)) <
-          12 / zoom;
-      if (b && rotate) {
-        transform.current = {
-          kind: "rotate",
-          start: p,
-          cx: (b.left + b.right) / 2,
-          cy: (b.top + b.bottom) / 2,
-          startX: 0,
-          startY: 0,
-        };
+      if (hit?.kind === "rotate") {
+        transform.current = {kind:"rotate",start:p,cx:hit.cx,cy:hit.cy};
         setEditingSelection(true);
-      } else if (corner) {
-        const [x, y, cx, cy] = corner;
-        transform.current = {
-          kind: "scale",
-          start: p,
-          cx,
-          cy,
-          startX: x - cx,
-          startY: y - cy,
-        };
+      } else if (hit && hit.kind !== "move") {
+        transform.current = {kind:"scale",start:p,cx:hit.cx,cy:hit.cy,handle:hit};
         setEditingSelection(true);
-      } else if (
-        b &&
-        p.x >= b.left - 8 &&
-        p.x <= b.right + 8 &&
-        p.y >= b.top - 8 &&
-        p.y <= b.bottom + 8
-      ) {
+      } else if (hit?.kind === "move") {
         moving.current = p;
         setEditingSelection(true);
       } else {
@@ -542,19 +504,11 @@ export function Sheet({
               { angle, cx: t.cx, cy: t.cy },
             );
           } else {
-            const safe = (n: number) =>
-              Math.sign(n || 1) * Math.max(0.05, Math.min(20, Math.abs(n)));
-            let sx = safe((p.x - t.cx) / (t.startX || 1)),
-              sy = safe((p.y - t.cy) / (t.startY || 1));
-            if (e.shiftKey) {
-              const magnitude = Math.max(Math.abs(sx), Math.abs(sy));
-              sx = Math.sign(sx) * magnitude;
-              sy = Math.sign(sy) * magnitude;
-            }
+            const scale = selectionScale(t.handle!, p.x-t.start.x, p.y-t.start.y);
             working.current = transformSelection(
               original.current,
               selected.current,
-              { scaleX: sx, scaleY: sy, cx: t.cx, cy: t.cy },
+              { ...scale, cx: t.cx, cy: t.cy },
             );
           }
         } else if (moving.current)
