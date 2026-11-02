@@ -1,11 +1,20 @@
 import {useEffect,useRef,useState,type PointerEvent as PE} from "react";
 import {createPortal} from "react-dom";
-import {MoreVertical,GripVertical,Plus,Copy,Trash2,FilePenLine,ArrowUp,ArrowDown} from "lucide-react";
+import {MoreVertical,GripVertical,Plus,Copy,Trash2,FilePenLine,ArrowUp,ArrowDown,PanelLeftClose,PanelLeftOpen} from "lucide-react";
 import type {Page} from "./model";
-import {pagePaperColor} from "./paper";
+import {PagePreview} from "./PagePreview";
+import {pdfjs,pdfOptions} from "./pdf";
+import type {PDFDocumentProxy} from "pdfjs-dist";
 import {PageTemplateDialog} from "./PageTemplateDialog";
-type Props={pages:Page[];active:string;dark:boolean;onSelect:(id:string)=>void;onAdd:()=>void;onInsert:(id:string,after:boolean)=>void;onDuplicate:(id:string)=>void;onDelete:(id:string)=>void;onReorder:(from:string,to:string,after:boolean)=>void;onTemplate:(id:string,patch:Partial<Page>)=>void;onApply:(id:string)=>void;onError:(s:string)=>void};
+type Props={pdf?:Uint8Array;collapsed:boolean;onCollapse:(collapsed:boolean)=>void;pages:Page[];active:string;dark:boolean;onSelect:(id:string)=>void;onAdd:()=>void;onInsert:(id:string,after:boolean)=>void;onDuplicate:(id:string)=>void;onDelete:(id:string)=>void;onReorder:(from:string,to:string,after:boolean)=>void;onTemplate:(id:string,patch:Partial<Page>)=>void;onApply:(id:string)=>void;onError:(s:string)=>void};
 export function PageSidebar(props:Props){
+ const [pdfDocument,setPDFDocument]=useState<PDFDocumentProxy>();
+ useEffect(()=>{
+  if(!props.pdf||props.collapsed){setPDFDocument(undefined);return;}
+  let disposed=false;const task=pdfjs.getDocument({...pdfOptions(),data:props.pdf.slice()});
+  void task.promise.then(doc=>{if(!disposed)setPDFDocument(doc);}).catch(()=>{if(!disposed)props.onError("PDFのページプレビューを表示できません。");});
+  return()=>{disposed=true;setPDFDocument(undefined);void task.destroy();};
+ },[props.pdf,props.collapsed]);
  const list=useRef<HTMLDivElement>(null),popup=useRef<HTMLDivElement>(null);
  const [menu,setMenu]=useState<{id:string;x:number;y:number}|null>(null);
  const [templateId,setTemplateId]=useState<string|null>(null);
@@ -42,10 +51,10 @@ export function PageSidebar(props:Props){
   setDrag(null);setDrop(null);dropRef.current=null;setTimeout(()=>{suppress.current=false;},0);
  }
  function open(e:React.MouseEvent<HTMLButtonElement>,id:string){anchor.current=e.currentTarget;const r=e.currentTarget.getBoundingClientRect();props.onSelect(id);setMenu({id,x:Math.min(innerWidth-180,Math.max(8,r.right+8)),y:Math.max(8,Math.min(innerHeight-235,r.top))});}
- return <aside className="page-strip" aria-label="ページ一覧"><span className="page-strip-heading">ページ <small>{props.pages.length}</small></span><div ref={list} className="page-list" onScroll={()=>setMenu(null)}>
+ return <aside className={"page-strip "+(props.collapsed?"pages-collapsed":"")} aria-label="ページ一覧"><div className="page-strip-header">{!props.collapsed&&<span className="page-strip-heading">ページ <small>{props.pages.length}</small></span>}<button className="page-strip-toggle" aria-label={props.collapsed?"ページ一覧を開く":"ページ一覧をたたむ"} title={props.collapsed?"ページ一覧を開く":"ページ一覧をたたむ"} aria-expanded={!props.collapsed} aria-controls="page-preview-list" onClick={()=>{setMenu(null);setTemplateId(null);props.onCollapse(!props.collapsed);}}>{props.collapsed?<PanelLeftOpen size={19}/>:<PanelLeftClose size={19}/>}</button></div><div id="page-preview-list" hidden={props.collapsed} ref={list} className="page-list" onScroll={()=>setMenu(null)}>
  {props.pages.map((p,i)=><div key={p.id} data-side-page={p.id} className={"page-item "+(drag===p.id?"dragging ":"")+(drop?.id===p.id?(drop.after?"drop-after":"drop-before"):"")}>
  <button className={"page-thumb "+(props.active===p.id?"current":"")} aria-label={`ページ ${i+1}`} aria-current={props.active===p.id?"page":undefined} onClick={()=>{if(!suppress.current)props.onSelect(p.id);}} onPointerDown={e=>down(e,p.id)} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)}>
- <span style={{backgroundColor:pagePaperColor(p,props.dark)}} className={"mini-paper "+(p.pdfIndex!==undefined?"pdf-paper":p.paper)}><span>{p.pdfIndex!==undefined?`PDF ${p.pdfIndex+1}`:String(i+1).padStart(2,"0")}</span><span className="mini-ink">{p.strokes.length?"〰":""}</span></span><small>{i+1}</small></button>
+ {!props.collapsed&&<PagePreview page={p} dark={props.dark} pdfDocument={pdfDocument} number={i+1}/>}<small>{i+1}</small></button>
  <button className="page-more" aria-label={`ページ ${i+1} のメニュー`} aria-expanded={menu?.id===p.id} onClick={e=>open(e,p.id)}><MoreVertical size={16}/></button>
  <button className="page-drag-handle" aria-label={`ページ ${i+1} を並び替え`} title="ドラッグで並び替え・上下キーで移動" onPointerDown={e=>down(e,p.id,true)} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)} onKeyDown={e=>{const target=props.pages[i+(e.key==="ArrowUp"?-1:e.key==="ArrowDown"?1:0)];if(target&&target!==p){e.preventDefault();props.onReorder(p.id,target.id,e.key==="ArrowDown");}}}><GripVertical size={12}/></button>
  </div>)}

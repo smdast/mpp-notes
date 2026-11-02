@@ -10,6 +10,7 @@ export type PenSettings = {
 };
 export type Preferences = {
   scratchErase: boolean;
+  pagesCollapsed:boolean;
   eraserMode: "stroke" | "area";
   theme: Theme;
   accent: "green" | "blue" | "rose";
@@ -21,7 +22,7 @@ export type Preferences = {
   shapeCorrection: boolean;
 };
 export const defaultPreferences = (): Preferences => ({
-  eraserMode: "stroke", scratchErase: false,
+  eraserMode: "stroke", scratchErase: false, pagesCollapsed:false,
   theme: "system", accent: "green", paperColor: "auto", paperPattern: "grid",
   pens: {
     pen1: { color: "#243d35", width: 3, pressure: true },
@@ -36,6 +37,7 @@ export function readPreferences(value: unknown): Preferences {
   const base = defaultPreferences();
   if (!value || typeof value !== "object") return base;
   const v = value as Partial<Preferences>;
+  if(typeof v.pagesCollapsed === "boolean")base.pagesCollapsed=v.pagesCollapsed;
   if(typeof v.scratchErase === "boolean")base.scratchErase=v.scratchErase;
   if (v.eraserMode === "stroke" || v.eraserMode === "area") base.eraserMode = v.eraserMode;
   if (v.accent && ["green","blue","rose"].includes(v.accent)) base.accent=v.accent;
