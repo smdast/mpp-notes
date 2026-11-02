@@ -1,4 +1,7 @@
-import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, MousePointer2 } from "lucide-react";
+import {useState,useRef,useEffect,useLayoutEffect} from "react";
+import {createPortal} from "react-dom";
+import {useDismiss} from "./useDismiss";
+import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, MousePointer2, X, ScanLine } from "lucide-react";
 import type { Tool } from "./Sheet";
 import type { EraserMode } from "./editing";
 import { penColor } from "./paper";
@@ -9,12 +12,21 @@ type Props = {
   onUndo: (redo?: boolean) => void; onTool: (tool: Tool) => void; onPen: (id: PenId) => void;
   onSettings: (settings: Partial<PenSettings>) => void; onColor: (color: string) => void;
   onEraserMode: (mode: EraserMode) => void; onEraserSize: (size: number) => void;
-  onMouse: (mouse: boolean) => void; onShapeCorrection: (enabled: boolean) => void;
+  onMouse: (mouse: boolean) => void; onShapeCorrection: (enabled: boolean) => void; onScratchErase:(enabled:boolean)=>void;
 };
 export function EditorToolbar(props: Props) {
   const {tool, preferences, color, colors, dark} = props;
   const settings = preferences.pens[preferences.activePen];
   const drawing = tool === "pen" || tool === "marker";
+  const [open,setOpen]=useState(false),[position,setPosition]=useState({left:12,top:100});
+  const panel=useRef<HTMLDivElement>(null),anchor=useRef<HTMLButtonElement|null>(null);
+  useDismiss(open,[panel,anchor],()=>setOpen(false),true);
+  useEffect(()=>setOpen(false),[tool,preferences.activePen]);
+  useLayoutEffect(()=>{
+    if(!open)return;
+    const update=()=>{const r=anchor.current?.getBoundingClientRect();if(r)setPosition({left:Math.max(12,Math.min(innerWidth-Math.min(360,innerWidth-24)-12,r.left)),top:r.bottom+12});};
+    update();window.addEventListener("resize",update);return()=>window.removeEventListener("resize",update);
+  },[open]);
   const style = settings.dashed ? "dashed" : settings.dotted ? "dotted" : "solid";
   return <div className="toolbar editor-toolbar">
     <div className="history-tools" role="group" aria-label="編集操作">
@@ -29,7 +41,7 @@ export function EditorToolbar(props: Props) {
             const label=id === "marker" ? "蛍光ペン (H)" : `ペン${i+1}`;
             return <button key={id} className={"tool pen-preset " + (drawing && preferences.activePen === id ? "active" : "")}
               aria-label={label} aria-pressed={drawing && preferences.activePen === id} title={label}
-              onClick={() => props.onPen(id)} style={{color:penColor(preferences.pens[id],id,dark)}}>
+              aria-expanded={drawing && preferences.activePen === id && open} aria-controls="tool-settings" onClick={e => {anchor.current=e.currentTarget;if(drawing && preferences.activePen === id)setOpen(v=>!v);else{setOpen(false);props.onPen(id);}}} style={{color:penColor(preferences.pens[id],id,dark)}}>
               {id === "marker" ? <Highlighter size={19}/> : <PenLine size={19}/>}
               <small>{id === "marker" ? "" : i+1}</small>
             </button>;
@@ -37,9 +49,11 @@ export function EditorToolbar(props: Props) {
         </div>
         <div className="tool-group">
           {([{id:"eraser",label:"消しゴム (E)",Icon:Eraser},{id:"lasso",label:"なげなわ選択 (L)",Icon:Lasso},{id:"hand",label:"移動 (V)",Icon:Hand}] as const).map(({id,label,Icon}) =>
-            <button key={id} className={"tool " + (tool === id ? "active" : "")} aria-label={label} aria-pressed={tool === id} title={label} onClick={() => props.onTool(id)}><Icon size={19}/></button>)}
+            <button key={id} className={"tool " + (tool === id ? "active" : "")} aria-label={label} aria-pressed={tool === id} title={label} aria-expanded={id === "eraser" ? tool === id && open : undefined} aria-controls={id === "eraser" ? "tool-settings" : undefined} onClick={e => {anchor.current=e.currentTarget;if(id === "eraser" && tool === id)setOpen(v=>!v);else{setOpen(false);props.onTool(id);}}}><Icon size={19}/></button>)}
         </div>
       </div>
+      {open && (drawing || tool === "eraser") && createPortal(<div ref={panel} id="tool-settings" role="dialog" aria-label={drawing?"ペンの設定":"消しゴムの設定"} className="tool-settings-popover" style={{...position,maxHeight:`calc(100dvh - ${position.top+12}px)`}}>
+        <header><strong>{drawing?"ペンの設定":"消しゴムの設定"}</strong><button aria-label="ツール設定を閉じる" onClick={()=>{setOpen(false);anchor.current?.focus();}}><X size={18}/></button></header>
       {drawing && <div className="context-controls" aria-label="ペンの設定">
         <div className="colors">
           {colors.map((c) => <button key={c} title={`色 ${c}`} aria-pressed={color === c} className={"swatch " + (color === c ? "chosen" : "")} style={{"--swatch":c} as React.CSSProperties} onClick={() => props.onColor(c)}/>)}
@@ -54,6 +68,8 @@ export function EditorToolbar(props: Props) {
         </div>
         <label className="setting-toggle"><input type="checkbox" aria-label="筆圧検知" checked={settings.pressure} onChange={(e) => props.onSettings({pressure:e.target.checked})}/><Gauge size={15} aria-hidden="true"/>筆圧</label>
         <label className="setting-toggle"><input type="checkbox" aria-label="図形補正" checked={preferences.shapeCorrection} onChange={(e) => props.onShapeCorrection(e.target.checked)}/><Shapes size={15} aria-hidden="true"/>図形補正</label>
+        {tool === "pen" && <label className="setting-toggle"><input type="checkbox" aria-label="こすって消去" checked={preferences.scratchErase} onChange={e=>props.onScratchErase(e.target.checked)}/><ScanLine size={15} aria-hidden="true"/>こすって消去</label>}
+        {tool === "pen" && <small className="scratch-help">線の上を数回往復して、線全体を消します。</small>}
       </div>}
       {tool === "eraser" && <div className="context-controls eraser-options" aria-label="消しゴムの設定">
         <div className="eraser-modes" role="group" aria-label="消しゴムの種類">
@@ -63,6 +79,7 @@ export function EditorToolbar(props: Props) {
         <label className="size-slider">大きさ<input type="range" aria-label="消しゴムのサイズ" min={1} max={120} step={1} value={props.eraserSize} onChange={(e) => props.onEraserSize(Number(e.target.value))}/><output>{props.eraserSize} px</output></label>
       </div>}
       {(drawing || tool === "eraser") && <label className="mouse-toggle"><input type="checkbox" aria-label="マウスでも描画" checked={props.mouse} onChange={(e) => props.onMouse(e.target.checked)}/><MousePointer2 size={15} aria-hidden="true"/><span>マウスでも描画</span></label>}
+      </div>,document.body)}
     </div>
   </div>;
 }

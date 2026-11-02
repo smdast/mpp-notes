@@ -29,6 +29,7 @@ type Props = {
   dotted: boolean;
   dashed: boolean;
   shapeCorrection: boolean;
+  scratchErase:boolean;
   mouse: boolean;
   eraserMode: EraserMode;
   eraserSize: number;
@@ -92,6 +93,7 @@ function PageSlot({
           dotted={props.dotted}
           dashed={props.dashed}
           shapeCorrection={props.shapeCorrection}
+          scratchErase={props.scratchErase}
           mouse={props.mouse}
           eraserMode={props.eraserMode}
           eraserSize={props.eraserSize}

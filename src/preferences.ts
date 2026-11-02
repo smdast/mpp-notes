@@ -9,6 +9,7 @@ export type PenSettings = {
   customColor?: boolean;
 };
 export type Preferences = {
+  scratchErase: boolean;
   eraserMode: "stroke" | "area";
   theme: Theme;
   accent: "green" | "blue" | "rose";
@@ -20,7 +21,7 @@ export type Preferences = {
   shapeCorrection: boolean;
 };
 export const defaultPreferences = (): Preferences => ({
-  eraserMode: "stroke",
+  eraserMode: "stroke", scratchErase: false,
   theme: "system", accent: "green", paperColor: "auto", paperPattern: "grid",
   pens: {
     pen1: { color: "#243d35", width: 3, pressure: true },
@@ -35,6 +36,7 @@ export function readPreferences(value: unknown): Preferences {
   const base = defaultPreferences();
   if (!value || typeof value !== "object") return base;
   const v = value as Partial<Preferences>;
+  if(typeof v.scratchErase === "boolean")base.scratchErase=v.scratchErase;
   if (v.eraserMode === "stroke" || v.eraserMode === "area") base.eraserMode = v.eraserMode;
   if (v.accent && ["green","blue","rose"].includes(v.accent)) base.accent=v.accent;
   if (v.paperColor === "auto" || /^#[0-9a-f]{6}$/i.test(v.paperColor || "")) base.paperColor=v.paperColor!;

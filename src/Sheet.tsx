@@ -1,3 +1,4 @@
+import {scratchErase as eraseScratch} from "./scratch";
 import {
   useEffect,
   useRef,
@@ -38,6 +39,7 @@ type Props = {
   dotted: boolean;
   dashed: boolean;
   shapeCorrection: boolean;
+  scratchErase:boolean;
   onActivate: () => void;
   zoom: number;
   tool: Tool;
@@ -60,6 +62,7 @@ export function Sheet({
   dotted,
   dashed,
   shapeCorrection,
+  scratchErase,
   onActivate,
   zoom,
   tool,
@@ -87,6 +90,7 @@ export function Sheet({
     lasso = useRef<Point[]>([]),
     moving = useRef<Point | null>(null),
     original = useRef<Stroke[]>([]);
+  const [popupOpen,setPopupOpen]=useState(true);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [, refreshSelection] = useState(0),
     [editingSelection, setEditingSelection] = useState(false);
@@ -333,6 +337,7 @@ export function Sheet({
       });
   }
   useEffect(() => {
+    setPopupOpen(true);
     working.current = page.strokes;
     selected.current = new Set(
       [...selected.current].filter((id) =>
@@ -443,6 +448,7 @@ export function Sheet({
     erasing.current =
       tool === "eraser" || (e.buttons & 32) !== 0 || (e.buttons & 2) !== 0;
     last.current = p;
+    setPopupOpen(true);
     if (erasing.current) applyEraser(p, p);
     else if (tool === "lasso") {
       if (hit?.kind === "rotate") {
@@ -544,13 +550,14 @@ export function Sheet({
       refreshSelection((v) => v + 1);
       lasso.current = [];
     }
-    if (current.current)
-      working.current = [
+    if (current.current) {
+      const erased=!cancel && tool === "pen" && scratchErase
+        ? eraseScratch(original.current,current.current.points,zoom) : null;
+      working.current = erased || [
         ...working.current,
-        !cancel && shapeCorrection
-          ? correctShape(current.current, page.strokes)
-          : current.current,
+        !cancel && shapeCorrection ? correctShape(current.current,page.strokes) : current.current,
       ];
+    }
     current.current = null;
     active.current = null;
     last.current = null;
@@ -598,8 +605,8 @@ export function Sheet({
         style={{ width: eraserSize, height: eraserSize, display: "none" }}
       />
       {pdfLoading && <div className="page-loading">PDFを読み込み中…</div>}
-      {isActive && tool === "lasso" && bounds && !editingSelection && (
-        <SelectionPopup canvas={ink} bounds={bounds} zoom={zoom}
+      {isActive && tool === "lasso" && bounds && popupOpen && !editingSelection && (
+        <SelectionPopup onDismiss={()=>setPopupOpen(false)} canvas={ink} bounds={bounds} zoom={zoom}
           onCopy={() => void copySelection()}
           onCut={() => void copySelection(true)}
           onDuplicate={() => insert(selectedStrokes())}

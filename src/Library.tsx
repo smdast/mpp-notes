@@ -216,7 +216,7 @@ export function Library({
               </button>
               <div className="note-card-actions">
                 <label className="cover-upload" title="表紙画像を選択">表紙<input type="file" accept="image/*" aria-label={`${n.title} の表紙画像`} onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)onCover(n,f);}}/></label>
-                {n.coverImage&&<button title="1ページ目の表紙に戻す" onClick={()=>onCover(n)}>自動</button>}
+                {n.coverImage&&<button className="cover-reset" title="1ページ目の表紙に戻す" onClick={()=>onCover(n)}>自動</button>}
 
                 <select
                   aria-label={`${n.title} の移動先`}

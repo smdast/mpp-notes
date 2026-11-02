@@ -1,3 +1,4 @@
+import {useDismiss} from "./useDismiss";
 import { flushSync } from "react-dom";
 import { useDriveSync } from "./drive/useDriveSync";
 import { DrivePanel } from "./drive/DrivePanel";
@@ -117,6 +118,8 @@ function App() {
     [dialog, setDialog] = useState<Dialog | null>(null),
     [menu, setMenu] = useState(false),
     [historyRevision, setHistoryRevision] = useState(0);
+  const noteMenu=useRef<HTMLDivElement>(null);
+  useDismiss(menu,[noteMenu],()=>setMenu(false));
   const [folders, setFolders] = useState<string[]>([]),
     [folder, setFolder] = useState("*");
   const eraserMode = preferences.eraserMode;
@@ -629,7 +632,7 @@ function App() {
                 </span>
                 <strong>{note?.title || "ノートをはじめよう"}</strong>
                 {note && (
-                  <div className="menu-wrap">
+                  <div className="menu-wrap" ref={noteMenu}>
                     <button
                       className="icon-button"
                       title="ノートの操作"
@@ -728,6 +731,7 @@ function App() {
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}
               onUndo={undo} onTool={setTool} onPen={choosePen} onSettings={setPen} onColor={setColor}
               onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize} onMouse={setMouse}
+              onScratchErase={scratchErase=>storePreferences({...preferencesRef.current,scratchErase})}
               onShapeCorrection={(shapeCorrection) => storePreferences({...preferencesRef.current, shapeCorrection})}/>
             {error && (
               <div className="error-banner" role="alert">
@@ -764,6 +768,7 @@ function App() {
                     pressure={pressure}
                     dotted={!!dotted}
                     dashed={!!dashed}
+                    scratchErase={preferences.scratchErase}
                     shapeCorrection={preferences.shapeCorrection}
                     mouse={mouse}
                     eraserMode={eraserMode}
@@ -883,6 +888,7 @@ function App() {
       {dialog && (
         <div
           className="modal-backdrop"
+          onPointerDown={e=>{if(e.target===e.currentTarget)setDialog(null);}}
           onKeyDown={(e) => {
             if (e.key === "Escape") setDialog(null);
           }}

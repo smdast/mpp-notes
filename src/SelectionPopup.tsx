@@ -1,13 +1,16 @@
+import {useDismiss} from "./useDismiss";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Copy, Scissors, CopyPlus, RotateCw, Trash2 } from "lucide-react";
 type Bounds = {left: number; top: number; right: number; bottom: number};
-export function SelectionPopup({canvas, bounds, zoom, onCopy, onCut, onDuplicate, onRotate, onDelete}: {
+export function SelectionPopup({canvas, bounds, zoom, onCopy, onCut, onDuplicate, onRotate, onDelete, onDismiss}: {
   canvas: RefObject<HTMLCanvasElement | null>; bounds: Bounds; zoom: number;
+  onDismiss:()=>void;
   onCopy: () => void; onCut: () => void; onDuplicate: () => void;
   onRotate: () => void; onDelete: () => void;
 }) {
   const popup = useRef<HTMLDivElement>(null);
+  useDismiss(true,[popup],onDismiss);
   const [position, setPosition] = useState({left: 0, top: 0, visible: false});
   useLayoutEffect(() => {
     const update = () => {
