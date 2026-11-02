@@ -13,7 +13,7 @@ export function HelpContent(){return (              <div className="help-content
                 </p>
                 <p>
                   <b>書く</b>
-                  　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスの場合は「マウスでも描画」をオンにしてください。
+                  　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスでもそのまま描画できます。
                 </p>
                 <p>
                   <b>移動する</b>

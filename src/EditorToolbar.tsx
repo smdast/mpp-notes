@@ -1,18 +1,19 @@
 import {useState,useRef,useEffect,useLayoutEffect} from "react";
 import {createPortal} from "react-dom";
 import {useDismiss} from "./useDismiss";
-import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, MousePointer2, X, ScanLine } from "lucide-react";
+import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine } from "lucide-react";
+import type {LucideIcon} from "lucide-react";
 import type { Tool } from "./Sheet";
 import type { EraserMode } from "./editing";
 import { penColor } from "./paper";
 import type { Preferences, PenId, PenSettings } from "./preferences";
 type Props = {
   tool: Tool; preferences: Preferences; dark: boolean; color: string; colors: string[];
-  eraserMode: EraserMode; eraserSize: number; mouse: boolean; canUndo: boolean; canRedo: boolean;
+  eraserMode: EraserMode; eraserSize: number; canUndo: boolean; canRedo: boolean;
   onUndo: (redo?: boolean) => void; onTool: (tool: Tool) => void; onPen: (id: PenId) => void;
   onSettings: (settings: Partial<PenSettings>) => void; onColor: (color: string) => void;
   onEraserMode: (mode: EraserMode) => void; onEraserSize: (size: number) => void;
-  onMouse: (mouse: boolean) => void; onShapeCorrection: (enabled: boolean) => void; onScratchErase:(enabled:boolean)=>void;
+  onShapeCorrection: (enabled: boolean) => void; onScratchErase:(enabled:boolean)=>void;
 };
 export function EditorToolbar(props: Props) {
   const {tool, preferences, color, colors, dark} = props;
@@ -24,7 +25,7 @@ export function EditorToolbar(props: Props) {
   useEffect(()=>setOpen(false),[tool,preferences.activePen]);
   useLayoutEffect(()=>{
     if(!open)return;
-    const update=()=>{const r=anchor.current?.getBoundingClientRect();if(r)setPosition({left:Math.max(12,Math.min(innerWidth-Math.min(360,innerWidth-24)-12,r.left)),top:r.bottom+12});};
+    const update=()=>{const r=anchor.current?.getBoundingClientRect();if(r)setPosition({left:Math.max(12,Math.min(innerWidth-Math.min(304,innerWidth-24)-12,r.left)),top:r.bottom+12});};
     update();window.addEventListener("resize",update);return()=>window.removeEventListener("resize",update);
   },[open]);
   const style = settings.dashed ? "dashed" : settings.dotted ? "dotted" : "solid";
@@ -59,27 +60,29 @@ export function EditorToolbar(props: Props) {
           {colors.map((c) => <button key={c} title={`色 ${c}`} aria-pressed={color === c} className={"swatch " + (color === c ? "chosen" : "")} style={{"--swatch":c} as React.CSSProperties} onClick={() => props.onColor(c)}/>)}
           <label className="custom-color" title="色を選ぶ"><Plus size={13}/><input type="color" aria-label="カスタム色" value={color} onChange={(e) => props.onColor(e.target.value)}/></label>
         </div>
-        <label className="size-slider pen-size-slider">太さ<input type="range" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(e) => props.onSettings({width:Number(e.target.value) / 5})}/><output>{Math.round(settings.width * 5)}</output></label>
+        <label className="size-slider pen-size-slider"><span>太さ</span><input type="range" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(e) => props.onSettings({width:Number(e.target.value) / 5})}/><output>{Math.round(settings.width * 5)}</output></label>
         <div className="line-styles" role="group" aria-label="線の種類">
           {([{id:"solid",label:"実線"},{id:"dotted",label:"点線"},{id:"dashed",label:"破線"}] as const).map(({id,label}) =>
             <button key={id} title={label} aria-label={label} aria-pressed={style === id} onClick={() => props.onSettings({dotted:id === "dotted",dashed:id === "dashed"})}>
               <svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M3 6H41" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={id === "dotted" ? "0.1 6" : id === "dashed" ? "9 6" : undefined}/></svg><span>{label}</span>
             </button>)}
         </div>
-        <label className="setting-toggle"><input type="checkbox" aria-label="筆圧検知" checked={settings.pressure} onChange={(e) => props.onSettings({pressure:e.target.checked})}/><Gauge size={15} aria-hidden="true"/>筆圧</label>
-        <label className="setting-toggle"><input type="checkbox" aria-label="図形補正" checked={preferences.shapeCorrection} onChange={(e) => props.onShapeCorrection(e.target.checked)}/><Shapes size={15} aria-hidden="true"/>図形補正</label>
-        {tool === "pen" && <label className="setting-toggle"><input type="checkbox" aria-label="こすって消去" checked={preferences.scratchErase} onChange={e=>props.onScratchErase(e.target.checked)}/><ScanLine size={15} aria-hidden="true"/>こすって消去</label>}
-        {tool === "pen" && <small className="scratch-help">線の上を数回往復して、線全体を消します。</small>}
+        <SettingSwitch label="筆圧検知" text="筆圧" Icon={Gauge} checked={settings.pressure} onChange={pressure=>props.onSettings({pressure})}/>
+        <SettingSwitch label="図形補正" Icon={Shapes} checked={preferences.shapeCorrection} onChange={props.onShapeCorrection}/>
+        {tool === "pen" && <SettingSwitch label="こすって消去" Icon={ScanLine} checked={preferences.scratchErase} onChange={props.onScratchErase}/>}
       </div>}
       {tool === "eraser" && <div className="context-controls eraser-options" aria-label="消しゴムの設定">
         <div className="eraser-modes" role="group" aria-label="消しゴムの種類">
           <button aria-pressed={props.eraserMode === "stroke"} onClick={() => props.onEraserMode("stroke")}>ストローク</button>
           <button aria-pressed={props.eraserMode === "area"} onClick={() => props.onEraserMode("area")}>エリア</button>
         </div>
-        <label className="size-slider">大きさ<input type="range" aria-label="消しゴムのサイズ" min={1} max={120} step={1} value={props.eraserSize} onChange={(e) => props.onEraserSize(Number(e.target.value))}/><output>{props.eraserSize} px</output></label>
+        <label className="size-slider"><span>大きさ</span><input type="range" aria-label="消しゴムのサイズ" min={1} max={120} step={1} value={props.eraserSize} onChange={(e) => props.onEraserSize(Number(e.target.value))}/><output>{props.eraserSize} px</output></label>
       </div>}
-      {(drawing || tool === "eraser") && <label className="mouse-toggle"><input type="checkbox" aria-label="マウスでも描画" checked={props.mouse} onChange={(e) => props.onMouse(e.target.checked)}/><MousePointer2 size={15} aria-hidden="true"/><span>マウスでも描画</span></label>}
       </div>,document.body)}
     </div>
   </div>;
+}
+
+function SettingSwitch({label,text=label,Icon,checked,onChange}:{label:string;text?:string;Icon:LucideIcon;checked:boolean;onChange:(value:boolean)=>void}){
+ return <label className="setting-switch"><span><Icon size={17} aria-hidden="true"/>{text}</span><input type="checkbox" role="switch" aria-label={label} checked={checked} onChange={e=>onChange(e.target.checked)}/><span className="switch-track" aria-hidden="true"/></label>;
 }

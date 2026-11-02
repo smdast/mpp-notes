@@ -45,7 +45,6 @@ type Props = {
   tool: Tool;
   color: string;
   width: number;
-  mouse: boolean;
   eraserMode: EraserMode;
   eraserSize: number;
   onCommit: (strokes: Stroke[]) => void;
@@ -68,7 +67,6 @@ export function Sheet({
   tool,
   color,
   width,
-  mouse,
   eraserMode,
   eraserSize,
   onCommit,
@@ -432,7 +430,6 @@ export function Sheet({
     if (
       (e.pointerType === "touch" && !hit && !image) ||
       tool === "hand" ||
-      (e.pointerType === "mouse" && !mouse && tool !== "lasso") ||
       e.button === 1
     )
       return;

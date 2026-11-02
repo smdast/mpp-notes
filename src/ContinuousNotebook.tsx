@@ -30,7 +30,6 @@ type Props = {
   dashed: boolean;
   shapeCorrection: boolean;
   scratchErase:boolean;
-  mouse: boolean;
   eraserMode: EraserMode;
   eraserSize: number;
   onActive: (id: string) => void;
@@ -94,7 +93,6 @@ function PageSlot({
           dashed={props.dashed}
           shapeCorrection={props.shapeCorrection}
           scratchErase={props.scratchErase}
-          mouse={props.mouse}
           eraserMode={props.eraserMode}
           eraserSize={props.eraserSize}
           onActivate={() => props.onActive(page.id)}

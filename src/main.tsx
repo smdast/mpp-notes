@@ -110,7 +110,6 @@ function App() {
     [blocked, setBlocked] = useState(false);
   const [tool, setTool] = useState<Tool>("pen"),
     [zoom, setZoom] = useState(0.7),
-    [mouse, setMouse] = useState(false),
     [sidebar, setSidebar] = useState(() => window.innerWidth > 650);
   const [saveStatus, setSaveStatus] = useState("保存済み"),
     [error, setError] = useState(""),
@@ -727,10 +726,10 @@ function App() {
               </div>
             </header>
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
-              eraserMode={eraserMode} eraserSize={eraserSize} mouse={mouse}
+              eraserMode={eraserMode} eraserSize={eraserSize}
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}
               onUndo={undo} onTool={setTool} onPen={choosePen} onSettings={setPen} onColor={setColor}
-              onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize} onMouse={setMouse}
+              onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize}
               onScratchErase={scratchErase=>storePreferences({...preferencesRef.current,scratchErase})}
               onShapeCorrection={(shapeCorrection) => storePreferences({...preferencesRef.current, shapeCorrection})}/>
             {error && (
@@ -770,7 +769,6 @@ function App() {
                     dashed={!!dashed}
                     scratchErase={preferences.scratchErase}
                     shapeCorrection={preferences.shapeCorrection}
-                    mouse={mouse}
                     eraserMode={eraserMode}
                     eraserSize={eraserSize}
                     onActive={setPageId}
@@ -958,7 +956,7 @@ function App() {
                 </p>
                 <p>
                   <b>書く</b>
-                  　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスの場合は「ペンのみ描画」を切り替えてください。
+                  　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスでもそのまま描画できます。
                 </p>
                 <p>
                   <b>移動する</b>
