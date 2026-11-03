@@ -1,5 +1,6 @@
 import { newPage, type Page } from "./model";
-import type { PenId, PenSettings } from "./preferences";
+import {penKind} from "./preferences";
+import type { BuiltinPenId, PenId, PenSettings } from "./preferences";
 export const LIGHT_PAPER = "#fffefa",
   DARK_PAPER = "#1e2822";
 export function newPageFrom(previous: Page | undefined, dark: boolean): Page {
@@ -27,20 +28,21 @@ export function pagePaperColor(
   if (page.paperColor) return page.paperColor;
   return page.strokes.length ? LIGHT_PAPER : dark ? DARK_PAPER : LIGHT_PAPER;
 }
-export const darkPenColors: Record<PenId, string> = {
+export const darkPenColors: Record<BuiltinPenId, string> = {
   pen1: "#e3efdf",
   pen2: "#8ec5ff",
   pen3: "#ffa5ad",
   marker: "#e9c968",
 };
-export const lightPenColors: Record<PenId, string> = {
+export const lightPenColors: Record<BuiltinPenId, string> = {
   pen1: "#243d35",
   pen2: "#376fac",
   pen3: "#bd6263",
   marker: "#bd8d39",
 };
 export function penColor(settings: PenSettings, id: PenId, dark: boolean) {
-  return settings.customColor
-    ? settings.color
-    : (dark ? darkPenColors : lightPenColors)[id];
+  if(settings.customColor)return settings.color;
+  const keys=Object.keys(lightPenColors) as BuiltinPenId[];
+  const auto=keys.find(key=>key===id)||keys.find(key=>lightPenColors[key]===settings.color)||(penKind(id,settings)==="marker"?"marker":"pen1");
+  return (dark?darkPenColors:lightPenColors)[auto];
 }

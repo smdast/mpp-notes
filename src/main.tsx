@@ -63,6 +63,9 @@ import { pagePaperColor, penColor, isDarkColor, darkPenColors } from "./paper";
 import { normalizeFolders, relocateFolder } from "./folders";
 import {
   defaultPreferences,
+  addPen,
+  penKind,
+  type PenKind,
   readPreferences,
   type Preferences,
   type PenId,
@@ -227,9 +230,13 @@ function App() {
   function setColor(color: string) {
     setPen({ color, customColor: true });
   }
+  function registerPen(kind:PenKind):PenId {
+    const next=addPen(preferencesRef.current,kind);
+    storePreferences(next);setTool(kind);return next.activePen;
+  }
   function choosePen(id: PenId) {
     storePreferences({ ...preferencesRef.current, activePen: id });
-    setTool(id === "marker" ? "marker" : "pen");
+    setTool(penKind(id,preferencesRef.current.pens[id]));
   }
   useEffect(() => {
     const route = () => {
@@ -289,7 +296,7 @@ function App() {
         const pref = readPreferences(storedPreferences);
         setPreferences(pref);
         preferencesRef.current = pref;
-        setTool(pref.activePen === "marker" ? "marker" : "pen");
+        setTool(penKind(pref.activePen,pref.pens[pref.activePen]));
         if (!alive) return;
         if (found.length) {
           setNotes(found.sort((a, b) => b.updated - a.updated));
@@ -410,7 +417,7 @@ function App() {
         };
         if (e.key.toLowerCase() === "p")
           choosePen(
-            preferencesRef.current.activePen === "marker"
+            penKind(preferencesRef.current.activePen,preferencesRef.current.pens[preferencesRef.current.activePen]) === "marker"
               ? "pen1"
               : preferencesRef.current.activePen,
           );
@@ -728,10 +735,9 @@ function App() {
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
               eraserMode={eraserMode} eraserSize={eraserSize}
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}
-              onUndo={undo} onTool={setTool} onPen={choosePen} onSettings={setPen} onColor={setColor}
+              onUndo={undo} onTool={setTool} onPen={choosePen} onAddPen={registerPen} onSettings={setPen} onColor={setColor}
               onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize}
-              onScratchErase={scratchErase=>storePreferences({...preferencesRef.current,scratchErase})}
-              onShapeCorrection={(shapeCorrection) => storePreferences({...preferencesRef.current, shapeCorrection})}/>
+              onScratchErase={scratchErase=>storePreferences({...preferencesRef.current,scratchErase})}/>
             {error && (
               <div className="error-banner" role="alert">
                 <span>{error}</span>
@@ -768,7 +774,7 @@ function App() {
                     dotted={!!dotted}
                     dashed={!!dashed}
                     scratchErase={preferences.scratchErase}
-                    shapeCorrection={preferences.shapeCorrection}
+                    shapeCorrection={preferences.pens[preferences.activePen].shapeCorrection!==false}
                     eraserMode={eraserMode}
                     eraserSize={eraserSize}
                     onActive={setPageId}
