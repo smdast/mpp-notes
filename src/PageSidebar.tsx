@@ -60,7 +60,7 @@ export function PageSidebar(props:Props){
   const r=v.getBoundingClientRect();
   if(g.y<r.top+36)v.scrollTop-=Math.min(14,(r.top+36-g.y)/3);
   else if(g.y>r.bottom-36)v.scrollTop+=Math.min(14,(g.y-r.bottom+36)/3);
-  if(ghost.current)ghost.current.style.transform=`translate3d(${g.x-g.offsetX}px,${g.y-g.offsetY}px,0) rotate(1deg) scale(1.03)`;
+  if(ghost.current)ghost.current.style.transform=`translate3d(${g.x-g.offsetX}px,${g.y-g.offsetY}px,0)`;
   updateSlot(g);frame.current=requestAnimationFrame(tick);
  }
  function down(e:PE,id:string){
@@ -102,7 +102,7 @@ export function PageSidebar(props:Props){
  <div className="page-strip-header">{!props.collapsed&&<span className="page-strip-heading">ページ <small>{props.pages.length}</small></span>}<button className="page-strip-toggle" aria-label={props.collapsed?"ページ一覧を開く":"ページ一覧をたたむ"} title={props.collapsed?"ページ一覧を開く":"ページ一覧をたたむ"} aria-expanded={!props.collapsed} aria-controls="page-preview-list" onClick={()=>{cancel();setMenu(null);setTemplateId(null);props.onCollapse(!props.collapsed);}}>{props.collapsed?<PanelLeftOpen size={19}/>:<PanelLeftClose size={19}/>}</button></div>
  <div id="page-preview-list" hidden={props.collapsed} ref={list} className={"page-list page-grid "+(drag?"sorting":"")} onScroll={()=>setMenu(null)} onContextMenu={e=>{if(gesture.current)e.preventDefault();}} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)} onPointerDownCapture={e=>{if(gesture.current&&gesture.current.pointer!==e.pointerId)cancel();}}>
  {tiles.map(p=>{
-  if(!p)return <div key="drop-slot" className="page-drop-slot" aria-label="移動先"><span>ここに移動</span></div>;
+  if(!p)return <div key="drop-slot" className="page-drop-cell" aria-label="移動先"><span className="page-drop-slot" aria-hidden="true"/></div>;
   const i=props.pages.indexOf(p);
   return <div key={p.id} data-side-page={p.id} className="page-item">
   <button className={"page-thumb "+(props.active===p.id?"current":"")} aria-label={`ページ ${i+1}`} aria-current={props.active===p.id?"page":undefined} title="長押しで並び替え・Alt＋矢印キーで移動" onClick={e=>{if(e.detail===0)props.onSelect(p.id);}} onPointerDown={e=>down(e,p.id)} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{
@@ -113,9 +113,9 @@ export function PageSidebar(props:Props){
   <button className="page-more" aria-label={`ページ ${i+1} のメニュー`} aria-expanded={menu?.id===p.id} onClick={e=>open(e,p.id)}><MoreVertical size={16}/></button>
   </div>;
  })}
- <button className="page-add-tile" aria-label="ページを追加" onClick={props.onAdd}><Plus size={24}/><span>ページを追加</span></button>
+ <div className="page-add-cell"><button className="page-add-tile" aria-label="ページを追加" onClick={props.onAdd}><Plus size={24}/><span>ページを追加</span></button></div>
  </div>
- {drag&&createPortal(<><div ref={ghost} className="page-drag-ghost" style={{width:drag.width,height:drag.height,transform:`translate3d(${(gesture.current?.x||0)-(gesture.current?.offsetX||0)}px,${(gesture.current?.y||0)-(gesture.current?.offsetY||0)}px,0) rotate(1deg) scale(1.03)`}} aria-hidden="true">{drag.src&&<img src={drag.src} alt="" draggable={false}/>}<small>ページ {props.pages.findIndex(p=>p.id===drag.id)+1}</small></div><span className="page-drag-status" role="status">ページを移動中です。空白の位置で離して移動、Escapeで中止します。</span></>,document.body)}
+ {drag&&createPortal(<><div ref={ghost} className="page-drag-ghost" style={{width:drag.width,height:drag.height,transform:`translate3d(${(gesture.current?.x||0)-(gesture.current?.offsetX||0)}px,${(gesture.current?.y||0)-(gesture.current?.offsetY||0)}px,0)`}} aria-hidden="true">{drag.src?<img src={drag.src} alt="" draggable={false}/>:<span className="page-ghost-empty"/>}</div><span className="page-drag-status" role="status">ページを移動中です。空白の位置で離して移動、Escapeで中止します。</span></>,document.body)}
  {menu&&selected&&createPortal(<div ref={popup} className="page-context-menu" role="dialog" aria-label="ページの操作" style={{left:Math.max(8,menu.x),top:menu.y}}>
  <header><b>ページ {props.pages.indexOf(selected)+1}</b><button aria-label="ページメニューを閉じる" onClick={()=>setMenu(null)}>×</button></header>
  <button onClick={()=>{props.onInsert(selected.id,false);setMenu(null);}}><ArrowUp size={15}/>前にページを挿入</button><button onClick={()=>{props.onInsert(selected.id,true);setMenu(null);}}><ArrowDown size={15}/>後にページを挿入</button><button onClick={()=>{props.onDuplicate(selected.id);setMenu(null);}}><Copy size={15}/>ページを複製</button><button disabled={selected.pdfIndex!==undefined} title={selected.pdfIndex!==undefined?"元PDFの背景は保持します":undefined} onClick={()=>{setTemplateId(selected.id);setMenu(null);}}><FilePenLine size={15}/>テンプレートを変更</button><button disabled={props.pages.length===1} onClick={()=>{props.onDelete(selected.id);setMenu(null);}}><Trash2 size={15}/>ページを削除</button>
