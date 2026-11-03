@@ -32,13 +32,10 @@ import {
 } from "lucide-react";
 import {
   newNote,
-  record,
-  travel,
-  type History,
   type Note,
-  type Page,
   type Stroke,
 } from "./model";
+import {recordPages,travelPages,forgetPage,type NotebookHistory,type PageChange} from "./notebookHistory";
 import {
   loadNotes,
   saveSyncSnapshot,
@@ -129,7 +126,7 @@ function App() {
   const eraserMode = preferences.eraserMode;
   const [eraserSize, setEraserSize] = useState(24);
   const activeRouteNote=useRef(noteId);activeRouteNote.current=noteId;
-  const histories = useRef(new Map<string, History>()),
+  const histories = useRef(new Map<string, NotebookHistory>()),
     queue = useRef(Promise.resolve()),
     pending = useRef(0),
     failed = useRef(false),
@@ -261,7 +258,7 @@ function App() {
     route();
     return () => {window.removeEventListener("hashchange", route);window.removeEventListener("popstate", route);};
   }, [ready]);
-  const history = page ? histories.current.get(page.id) : undefined;
+  const history = note ? histories.current.get(note.id) : undefined;
   function enqueue(op: () => Promise<unknown>) {
     pending.current++;
     setSaveStatus("保存中…");
@@ -359,44 +356,23 @@ function App() {
     setNotes((prev) => prev.map((n) => (n.id === next.id ? next : n)));
     enqueue(() => saveNote(next));
   }
-  function updatePage(next: Page) {
-    if (!note) return;
-    updateNote({
-      ...note,
-      pages: note.pages.map((p) => (p.id === next.id ? next : p)),
-    });
-  }
   function commit(strokes: Stroke[], targetId = page?.id) {
-    const target = note?.pages.find((p) => p.id === targetId);
-    if (!target || strokes === target.strokes) return;
-    histories.current.set(
-      target.id,
-      record(
-        histories.current.get(target.id) || { past: [], future: [] },
-        target.strokes,
-      ),
-    );
-    setHistoryRevision((v) => v + 1);
-    updatePage({
-      ...target,
-      paperColor:
-        target.pdfIndex === undefined
-          ? pagePaperColor(target, dark)
-          : undefined,
-      strokes,
-    });
+    if(targetId)commitPages([{id:targetId,strokes}]);
+  }
+  function commitPages(changes:PageChange[]) {
+    const current=notesRef.current.find(n=>n.id===note?.id);if(!current)return;
+    const prev=histories.current.get(current.id)||{past:[],future:[]};
+    const next=recordPages(prev,current.pages,changes);if(next===prev)return;
+    histories.current.set(current.id,next);setHistoryRevision(v=>v+1);
+    const replacements=new Map(changes.map(c=>[c.id,c.strokes]));
+    updateNote({...current,pages:current.pages.map(p=>replacements.has(p.id)?{...p,strokes:replacements.get(p.id)!,paperColor:p.pdfIndex===undefined?pagePaperColor(p,dark):undefined}:p)});
   }
   function undo(redo = false) {
-    if (!page) return;
-    const result = travel(
-      histories.current.get(page.id) || { past: [], future: [] },
-      page.strokes,
-      redo,
-    );
-    histories.current.set(page.id, result.history);
+    if (!page||!note) return;
+    const result = travelPages(histories.current.get(note.id)||{past:[],future:[]},note.pages,redo);
+    histories.current.set(note.id, result.history);
     setHistoryRevision((v) => v + 1);
-    if (result.strokes !== page.strokes)
-      updatePage({ ...page, strokes: result.strokes });
+    if(result.pages!==note.pages){updateNote({...note,pages:result.pages});const targetId=redo?result.ids.at(-1):result.ids[0];if(targetId!==page.id&&result.pages.some(p=>p.id===targetId))goPage(targetId!);}
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -404,7 +380,7 @@ function App() {
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
         dialog || settingsOpen || document.querySelector(".page-context-menu,.page-template-dialog") ||
-        busy
+        busy || writing.current
       )
         return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -518,7 +494,7 @@ function App() {
     }
     if(dialog.kind === "deletePage" && note && note.pages.length>1){
       const id=dialog.pageId||page?.id; const index=note.pages.findIndex(p=>p.id===id);
-      if(index>=0){const pages=note.pages.filter(p=>p.id!==id);updateNote({...note,pages});goPage(pages[Math.min(index,pages.length-1)].id);histories.current.delete(id!);}
+      if(index>=0){const pages=note.pages.filter(p=>p.id!==id);updateNote({...note,pages});goPage(pages[Math.min(index,pages.length-1)].id);const h=histories.current.get(note.id);if(h)histories.current.set(note.id,forgetPage(h,id!));}
     }
     setDialog(null);
   }
@@ -784,6 +760,7 @@ function App() {
                     onActive={setPageId}
                     onAddPage={addPage}
                     onCommit={(id, strokes) => commit(strokes, id)}
+                    onCommitPages={commitPages}
                     onError={setError}
                     onWriting={(b) => {
                       writing.current = b;

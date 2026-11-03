@@ -14,6 +14,11 @@ import { zoomScrollTop, clampZoom } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
+import {selectionBounds,renderScale} from "./editing";
+import {drawStroke} from "./draw";
+import {createPortal} from "react-dom";
+import {transferSelection,type SelectionDrag,type IncomingSelection} from "./selectionTransfer";
+import type {PageChange} from "./notebookHistory";
 type Props = {
   note: Note;
   onPasted: () => void;
@@ -35,6 +40,7 @@ type Props = {
   onActive: (id: string) => void;
   onAddPage: () => void;
   onCommit: (id: string, strokes: Stroke[]) => void;
+  onCommitPages:(changes:PageChange[])=>void;
   onError: (s: string) => void;
   onWriting: (b: boolean) => void;
 };
@@ -45,6 +51,8 @@ function PageSlot({
   document,
   props,
   onWriting,
+  incoming,
+  onSelectionDrag,
 }: {
   page: Page;
   index: number;
@@ -52,6 +60,8 @@ function PageSlot({
   document?: PDFDocumentProxy;
   props: Props;
   onWriting: (id: string, b: boolean) => void;
+  incoming?:IncomingSelection;
+  onSelectionDrag:(id:string,drag:SelectionDrag)=>string|undefined;
 }) {
   const slot = useRef<HTMLDivElement>(null),
     [visible, setVisible] = useState(index === 0),
@@ -97,6 +107,8 @@ function PageSlot({
           eraserSize={props.eraserSize}
           onActivate={() => props.onActive(page.id)}
           onCommit={(strokes) => props.onCommit(page.id, strokes)}
+          incomingSelection={incoming}
+          onSelectionDrag={drag=>onSelectionDrag(page.id,drag)}
           onError={props.onError}
           onWriting={(b) => {
             setPinned(b);
@@ -118,6 +130,10 @@ function PageSlot({
   );
 }
 export function ContinuousNotebook(props: Props) {
+  const ghost=useRef<HTMLCanvasElement>(null),dragging=useRef<{id:string;drag:SelectionDrag;bounds:{left:number;top:number;right:number;bottom:number}}|null>(null);
+  const dragFrame=useRef(0),dropTarget=useRef<HTMLElement|null>(null),dragTime=useRef(0);
+  const [incoming,setIncoming]=useState<IncomingSelection>();
+  const latest=useRef(props);latest.current=props;
   const viewport = useRef<HTMLDivElement>(null),
     [document, setDocument] = useState<PDFDocumentProxy>(),
     [pull, setPull] = useState(0),
@@ -129,6 +145,54 @@ export function ContinuousNotebook(props: Props) {
   const { note, zoom, setZoom, onActive, onError } = props;
   const motion = useRef<ScrollMotion | null>(null),
     velocity = useRef({ x: 0, y: 0, time: 0 });
+  function targetAt(x:number,y:number){
+    const v=viewport.current;if(!v)return;
+    const vr=v.getBoundingClientRect();if(x<vr.left||x>vr.right||y<vr.top||y>vr.bottom)return;
+    for(const slot of v.querySelectorAll<HTMLElement>("[data-page-id]")){
+      const surface=slot.querySelector<HTMLElement>(".sheet,.page-placeholder");if(!surface)continue;
+      const rect=surface.getBoundingClientRect();if(x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom)return {slot,rect,id:slot.dataset.pageId!};
+    }
+  }
+  function stopDrag(){
+    cancelAnimationFrame(dragFrame.current);dragFrame.current=0;dragging.current=null;
+    if(ghost.current){ghost.current.style.display="none";ghost.current.width=1;ghost.current.height=1;}
+    dropTarget.current?.classList.remove("selection-drop-target");dropTarget.current=null;
+  }
+  function dragTick(time:number){
+    const item=dragging.current,v=viewport.current,c=ghost.current;if(!item||!v||!c)return;
+    const {drag,bounds}=item,zoom=latest.current.zoom,r=v.getBoundingClientRect();
+    const dt=Math.min(32,Math.max(0,time-dragTime.current));dragTime.current=time;
+    const speed=(p:number,lo:number,hi:number)=>p<lo+56?-Math.min(1,(lo+56-p)/56):p>hi-56?Math.min(1,(p-hi+56)/56):0;
+    v.scrollTop+=speed(drag.client.y,r.top,r.bottom)*dt*.8;
+    v.scrollLeft+=speed(drag.client.x,r.left,r.right)*dt*.8;
+    c.style.transform=`translate3d(${drag.client.x-(drag.start.x-bounds.left)*zoom}px,${drag.client.y-(drag.start.y-bounds.top)*zoom}px,0)`;
+    const target=targetAt(drag.client.x,drag.client.y)?.slot||null;
+    if(target!==dropTarget.current){dropTarget.current?.classList.remove("selection-drop-target");target?.classList.add("selection-drop-target");dropTarget.current=target;}
+    dragFrame.current=requestAnimationFrame(dragTick);
+  }
+  function selectionDrag(id:string,drag:SelectionDrag):string|undefined {
+    if(drag.phase==="start"){
+      stopDrag();const ids=new Set(drag.strokes.map(s=>s.id)),b=selectionBounds(drag.strokes,ids),c=ghost.current;if(!b||!c)return;
+      const margin=10/zoom,bounds={left:b.left-margin,top:b.top-margin,right:b.right+margin,bottom:b.bottom+margin};
+      const w=bounds.right-bounds.left,h=bounds.bottom-bounds.top,scale=renderScale(w,h,zoom,window.devicePixelRatio||1);
+      c.width=Math.max(1,Math.ceil(w*scale));c.height=Math.max(1,Math.ceil(h*scale));c.style.width=`${w*zoom}px`;c.style.height=`${h*zoom}px`;
+      const ctx=c.getContext("2d")!;ctx.setTransform(c.width/w,0,0,c.height/h,-bounds.left*c.width/w,-bounds.top*c.height/h);
+      drag.strokes.forEach(s=>drawStroke(ctx,s));ctx.strokeStyle="#70ac83";ctx.lineWidth=1.5/zoom;ctx.setLineDash([5/zoom,4/zoom]);ctx.strokeRect(b.left-3/zoom,b.top-3/zoom,b.right-b.left+6/zoom,b.bottom-b.top+6/zoom);
+      c.style.display="block";c.style.transform=`translate3d(${drag.client.x-(drag.start.x-bounds.left)*zoom}px,${drag.client.y-(drag.start.y-bounds.top)*zoom}px,0)`;
+      dragging.current={id,drag,bounds};dragTime.current=performance.now();dragFrame.current=requestAnimationFrame(dragTick);return;
+    }
+    if(!dragging.current)return;
+    if(drag.phase==="move"){dragging.current.drag=drag;return;}
+    if(drag.phase==="cancel"){stopDrag();return;}
+    const target=targetAt(drag.client.x,drag.client.y),current=latest.current;
+    stopDrag();if(!target)return;
+    const page=current.note.pages.find(p=>p.id===target.id);if(!page)return;
+    const end={x:(drag.client.x-target.rect.left)*page.width/target.rect.width,y:(drag.client.y-target.rect.top)*page.height/target.rect.height,p:drag.start.p};
+    const changes=transferSelection(current.note.pages,id,target.id,drag.strokes,drag.start,end);if(!changes.length)return;
+    const ids=target.id===id?drag.strokes.map(s=>s.id):changes.find(c=>c.id===target.id)!.strokes.slice(page.strokes.length).map(s=>s.id);
+    current.onCommitPages(changes);current.onActive(target.id);setIncoming({pageId:target.id,ids,token:performance.now()});return target.id;
+  }
+  useEffect(()=>()=>stopDrag(),[]);
   useEffect(() => {
     if (viewport.current) motion.current = new ScrollMotion(viewport.current);
     return () => {
@@ -347,6 +411,8 @@ export function ContinuousNotebook(props: Props) {
             document={document}
             props={props}
             onWriting={writing}
+            incoming={incoming}
+            onSelectionDrag={selectionDrag}
           />
         ))}
       </div>
@@ -361,6 +427,7 @@ export function ContinuousNotebook(props: Props) {
           <progress max={90} value={Math.min(90, pull)} />
         </div>
       )}
+      {createPortal(<canvas ref={ghost} className="selection-drag-ghost" aria-hidden="true"/>,window.document.body)}
     </div>
   );
 }

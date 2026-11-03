@@ -1,4 +1,5 @@
 import { uid, hits, segmentDistance, type Point, type Stroke } from "./model";
+import {StrokeIndex,strokeBounds,pointBounds,overlaps} from "./spatial";
 export type EraserMode = "stroke" | "area";
 export function erase(
   strokes: Stroke[],
@@ -6,20 +7,24 @@ export function erase(
   b: Point,
   radius: number,
   mode: EraserMode,
+  index?: StrokeIndex,
+  onErase?: (stroke:Stroke)=>void,
 ): Stroke[] {
   let changed = false;
   const result: Stroke[] = [];
+  const region=pointBounds([a,b],radius),candidates=index?.query(region);
   for (const stroke of strokes) {
     // Images are selected/deleted as objects, never split into pen fragments.
     if (stroke.image) {
       result.push(stroke);
       continue;
     }
-    if (!hits(stroke, a, b, radius)) {
+    if ((candidates ? !candidates.has(stroke) : !overlaps(strokeBounds(stroke),region)) || !hits(stroke, a, b, radius)) {
       result.push(stroke);
       continue;
     }
     changed = true;
+    onErase?.(stroke);index?.remove(stroke);
     if (mode === "stroke") continue;
     const limit = radius + stroke.width * 0.6;
     const pieces: Point[][] = [];
@@ -53,7 +58,7 @@ export function erase(
       }
     }
     if (piece.length) pieces.push(piece);
-    for (const points of pieces) result.push({ ...stroke, id: uid(), points });
+    for (const points of pieces) {const fragment={ ...stroke, id: uid(), points };result.push(fragment);index?.add(fragment);}
   }
   return changed ? result : strokes;
 }
@@ -70,17 +75,17 @@ export function inside(p: Point, polygon: Point[]) {
   }
   return hit;
 }
-export function selectLasso(strokes: Stroke[], polygon: Point[]) {
+export function selectLasso(strokes: Stroke[], polygon: Point[], index?:StrokeIndex) {
   if (polygon.length < 3) return new Set<string>();
+  const region=pointBounds(polygon),candidates=index?.query(region);
+  const edges=polygon.map((a,i)=>({a,b:polygon[(i+1)%polygon.length],bounds:pointBounds([a,polygon[(i+1)%polygon.length]])}));
   return new Set(
-    strokes
+    (candidates?[...candidates]:strokes)
       .filter(
         (s) =>
-          s.points.some((p) => inside(p, polygon)) ||
+          overlaps(strokeBounds(s),region) && (s.points.some((p) => inside(p, polygon)) ||
           (!!s.image && polygon.some((p) => inside(p, s.points))) ||
-          polygon.some((a, i) =>
-            hits(s, a, polygon[(i + 1) % polygon.length], 0),
-          ),
+          edges.some(({a,b,bounds}) => overlaps(strokeBounds(s),bounds)&&hits(s,a,b,0))),
       )
       .map((s) => s.id),
   );
@@ -113,13 +118,11 @@ export function selectionBounds(strokes: Stroke[], ids: Set<string>) {
     right = -Infinity,
     bottom = -Infinity;
   for (const s of strokes)
-    if (ids.has(s.id))
-      for (const p of s.points) {
-        left = Math.min(left, p.x - s.width / 2);
-        top = Math.min(top, p.y - s.width / 2);
-        right = Math.max(right, p.x + s.width / 2);
-        bottom = Math.max(bottom, p.y + s.width / 2);
-      }
+    if (ids.has(s.id)) {
+      const b=strokeBounds(s),inset=s.image?s.width/2:-s.width*.15;
+      left=Math.min(left,b.left-inset);top=Math.min(top,b.top-inset);
+      right=Math.max(right,b.right+inset);bottom=Math.max(bottom,b.bottom+inset);
+    }
   return Number.isFinite(left) ? { left, top, right, bottom } : null;
 }
 export function transformSelection(

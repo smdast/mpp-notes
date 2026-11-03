@@ -3004,3 +3004,5 @@ main {
 .editor-toolbar .tool-picker .tool {flex:0 0 35px;box-sizing:border-box;}
 .tool-settings-popover .delete-pen {display:flex;align-items:center;justify-content:center;gap:8px;min-height:36px;border:1px solid currentColor;border-radius:7px;color:#a8454a;font-size:12px;}
 [data-theme="dark"] .tool-settings-popover .delete-pen {color:#eaa3a5;}
+.selection-drag-ghost {display:none;position:fixed;top:0;left:0;pointer-events:none;z-index:60;will-change:transform;filter:drop-shadow(0 3px 5px #0003);}
+.continuous-page.selection-drop-target .sheet,.continuous-page.selection-drop-target .page-placeholder {outline:2px solid var(--t-accent,#718d66);outline-offset:3px;}

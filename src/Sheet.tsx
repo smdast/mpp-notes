@@ -28,6 +28,8 @@ import { pressureValue } from "./preferences";
 import { SelectionPopup } from "./SelectionPopup";
 import { cloneStrokes, decodeStrokes, editableTarget, localStrokes, rememberStrokes } from "./clipboard";
 import { imageStroke, prepareImages, loadInkImage } from "./images";
+import {StrokeIndex,strokeBounds,unionBounds,type Bounds} from "./spatial";
+import type {SelectionDrag,IncomingSelection} from "./selectionTransfer";
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
   page: Page;
@@ -50,6 +52,8 @@ type Props = {
   onCommit: (strokes: Stroke[]) => void;
   onError: (message: string) => void;
   onWriting: (writing: boolean) => void;
+  onSelectionDrag:(drag:SelectionDrag)=>string|undefined;
+  incomingSelection?:IncomingSelection;
 };
 export function Sheet({
   page,
@@ -72,7 +76,13 @@ export function Sheet({
   onCommit,
   onError,
   onWriting,
+  onSelectionDrag,
+  incomingSelection,
 }: Props) {
+  const spatial=useRef<StrokeIndex|null>(null),dirty=useRef<Bounds|null>(null);
+  const dragStrokes=useRef<Stroke[]>([]);
+  const backing=useRef<{canvas:HTMLCanvasElement;source:Stroke[];omit:boolean}|null>(null);
+  function discardBacking(){if(backing.current){backing.current.canvas.width=1;backing.current.canvas.height=1;backing.current=null;}}
   const cursor = useRef<HTMLDivElement>(null);
   // Keep decoded images alive only while their page is mounted.
   const decodedImages = useRef<HTMLImageElement[]>([]);
@@ -244,6 +254,10 @@ export function Sheet({
   useEffect(() => {
     if (!isActive) clearSelection();
   }, [isActive]);
+  useEffect(()=>{
+    if(incomingSelection?.pageId!==page.id)return;
+    selected.current=new Set(incomingSelection.ids);setPopupOpen(true);refreshSelection(v=>v+1);schedule();
+  },[incomingSelection?.token,page.id]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
@@ -257,7 +271,16 @@ export function Sheet({
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         removeSelection();
-      } else if (e.key === "Escape") clearSelection();
+      } else if (e.key === "Escape") {
+        const pointer=active.current;
+        if(pointer!==null){
+          if(moving.current)onSelectionDrag({phase:"cancel",strokes:dragStrokes.current,start:moving.current,client:{x:0,y:0}});
+          working.current=original.current;moving.current=null;transform.current=null;lasso.current=[];active.current=null;
+          discardBacking();setEditingSelection(false);onWriting(false);
+          if(ink.current?.hasPointerCapture(pointer))ink.current.releasePointerCapture(pointer);
+        }
+        clearSelection();
+      }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
@@ -269,20 +292,40 @@ export function Sheet({
     return () => window.removeEventListener("resize", resize);
   }, []);
   const pixels = renderScale(page.width, page.height, zoom, dpr);
-  function paint() {
+  function paint(force=false) {
     const c = ink.current;
     if (!c) return;
     const ctx = c.getContext("2d")!;
+    if(erasing.current&&!dirty.current&&!force)return;
     ctx.setTransform(c.width / page.width, 0, 0, c.height / page.height, 0, 0);
+    if(erasing.current&&dirty.current&&spatial.current){
+      const b=dirty.current;dirty.current=null;
+      // Clip both clearing and repainting so distant ink is never redrawn.
+      ctx.save();ctx.beginPath();ctx.rect(b.left-2,b.top-2,b.right-b.left+4,b.bottom-b.top+4);ctx.clip();
+      ctx.clearRect(b.left-2,b.top-2,b.right-b.left+4,b.bottom-b.top+4);
+      const nearby=spatial.current.query({left:b.left-2,top:b.top-2,right:b.right+2,bottom:b.bottom+2});
+      for(const s of working.current)if(nearby.has(s))drawStroke(ctx,s);
+      ctx.restore();return;
+    }
     ctx.clearRect(0, 0, page.width, page.height);
-    working.current.forEach((s) => drawStroke(ctx, s));
+    if(active.current!==null&&!erasing.current){
+      const omit=!!moving.current||!!transform.current,source=omit?original.current:working.current;
+      if(!backing.current||backing.current.source!==source||backing.current.omit!==omit||backing.current.canvas.width!==c.width||backing.current.canvas.height!==c.height){
+        discardBacking();const canvas=document.createElement("canvas");canvas.width=c.width;canvas.height=c.height;
+        const base=canvas.getContext("2d")!;base.setTransform(c.width/page.width,0,0,c.height/page.height,0,0);
+        for(const s of source)if(!omit||!selected.current.has(s.id))drawStroke(base,s);
+        backing.current={canvas,source,omit};
+      }
+      ctx.drawImage(backing.current.canvas,0,0,page.width,page.height);
+      if(transform.current)for(const s of working.current)if(selected.current.has(s.id))drawStroke(ctx,s);
+    }else working.current.forEach((s) => drawStroke(ctx, s));
     if (current.current) drawStroke(ctx, current.current);
     if (tool === "lasso") {
       ctx.save();
       ctx.strokeStyle = isDarkColor(paperColor) ? "#acd49a" : "#397956";
       ctx.lineWidth = 1.3 / zoom;
       ctx.setLineDash([5 / zoom, 4 / zoom]);
-      const b = selectionBounds(working.current, selected.current);
+      const b = moving.current?null:selectionBounds(working.current, selected.current);
       if (b) {
         ctx.fillStyle = isDarkColor(paperColor) ? "#a9d39420" : "#427b5812";
         ctx.fillRect(
@@ -335,18 +378,17 @@ export function Sheet({
       });
   }
   useEffect(() => {
+    discardBacking();
     setPopupOpen(true);
     working.current = page.strokes;
-    selected.current = new Set(
-      [...selected.current].filter((id) =>
-        page.strokes.some((s) => s.id === id),
-      ),
-    );
+    const existing=new Set(page.strokes.map(s=>s.id));
+    selected.current = new Set([...selected.current].filter(id=>existing.has(id)));
     refreshSelection((v) => v + 1);
     paint();
   }, [page.strokes, page.id, pixels, tool]);
   useEffect(() => {
     let disposed = false;
+    if(!page.strokes.some(s=>s.image)){decodedImages.current=[];return;}
     void prepareImages(page.strokes).then((images) => {
       if (!disposed) { decodedImages.current = images; paint(); }
     })
@@ -356,6 +398,7 @@ export function Sheet({
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
+      discardBacking();
       onWriting(false);
     },
     [],
@@ -406,11 +449,11 @@ export function Sheet({
     clientY: number;
     pressure: number;
     pointerType?: string;
-  }) =>
+  },rect=ink.current!.getBoundingClientRect()) =>
     pagePoint(
       e.clientX,
       e.clientY,
-      ink.current!.getBoundingClientRect(),
+      rect,
       page,
       pressureValue(e.pointerType === "mouse" ? 0.5 : e.pressure, pressure),
     );
@@ -421,6 +464,8 @@ export function Sheet({
       b,
       eraserSize / 2 / zoom,
       eraserMode,
+      spatial.current||undefined,
+      stroke=>{const b=strokeBounds(stroke);dirty.current=dirty.current?unionBounds(dirty.current,b):b;},
     );
   }
   function down(e: RPointerEvent<HTMLCanvasElement>) {
@@ -442,11 +487,13 @@ export function Sheet({
     e.currentTarget.setPointerCapture(e.pointerId);
     working.current = page.strokes;
     original.current = page.strokes;
+    discardBacking();dirty.current=null;
     erasing.current =
       tool === "eraser" || (e.buttons & 32) !== 0 || (e.buttons & 2) !== 0;
+    spatial.current=erasing.current||tool==="lasso"?new StrokeIndex(page.strokes):null;
     last.current = p;
     setPopupOpen(true);
-    if (erasing.current) applyEraser(p, p);
+    if (erasing.current) {selected.current.clear();paint(true);applyEraser(p, p);}
     else if (tool === "lasso") {
       if (hit?.kind === "rotate") {
         transform.current = {kind:"rotate",start:p,cx:hit.cx,cy:hit.cy};
@@ -460,6 +507,8 @@ export function Sheet({
           refreshSelection(v => v + 1);
         }
         moving.current = p;
+        dragStrokes.current=page.strokes.filter(s=>selected.current.has(s.id));
+        onSelectionDrag({phase:"start",strokes:dragStrokes.current,start:p,client:{x:e.clientX,y:e.clientY}});
         setEditingSelection(true);
       } else {
         selected.current.clear();
@@ -495,8 +544,10 @@ export function Sheet({
     e.preventDefault();
     e.stopPropagation();
     const samples = e.nativeEvent.getCoalescedEvents?.() || [];
-    for (const sample of samples.length ? samples : [e.nativeEvent]) {
-      const p = point(sample);
+    const rect=ink.current!.getBoundingClientRect();
+    const events=samples.length?samples:[e.nativeEvent];
+    for (const sample of tool==="lasso"&&(moving.current||transform.current)?events.slice(-1):events) {
+      const p = point(sample,rect);
       if (erasing.current) {
         applyEraser(last.current || p, p);
         last.current = p;
@@ -521,16 +572,11 @@ export function Sheet({
             );
           }
         } else if (moving.current)
-          working.current = moveSelection(
-            original.current,
-            selected.current,
-            p.x - moving.current.x,
-            p.y - moving.current.y,
-          );
-        else lasso.current.push(p);
+          onSelectionDrag({phase:"move",strokes:dragStrokes.current,start:moving.current,client:{x:sample.clientX,y:sample.clientY}});
+        else {const previous=lasso.current.at(-1);if(!previous||Math.hypot(p.x-previous.x,p.y-previous.y)>=2/zoom)lasso.current.push(p);}
       } else current.current?.points.push(p);
     }
-    schedule();
+    if(!moving.current)schedule();
   }
   function finish(e: RPointerEvent<HTMLCanvasElement>) {
     if (active.current !== e.pointerId) return;
@@ -538,9 +584,10 @@ export function Sheet({
     const cancel =
       e.type === "pointercancel" || e.type === "lostpointercapture";
     if (tool === "lasso" && !erasing.current) {
+      if(moving.current){const target=onSelectionDrag({phase:cancel?"cancel":"end",strokes:dragStrokes.current,start:moving.current,client:{x:e.clientX,y:e.clientY}});if(target&&target!==page.id)selected.current.clear();}
       if (cancel) working.current = original.current;
       else if (!moving.current && !transform.current)
-        selected.current = selectLasso(working.current, lasso.current);
+        selected.current = selectLasso(working.current, lasso.current,spatial.current||undefined);
       moving.current = null;
       transform.current = null;
       setEditingSelection(false);
@@ -557,6 +604,8 @@ export function Sheet({
     }
     current.current = null;
     active.current = null;
+    if(cancel)working.current=original.current;
+    erasing.current=false;dirty.current=null;spatial.current=null;discardBacking();
     last.current = null;
     onWriting(false);
     if (working.current !== page.strokes) onCommit(working.current);
