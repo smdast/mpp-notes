@@ -2965,3 +2965,23 @@ main {
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
 }
+
+/* Two-column page tray, held-page sorting, and an in-flow add tile. */
+.view-editor .page-strip {width:264px;}
+.page-list.page-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:12px 8px;padding:4px;}
+.page-list.page-grid[hidden] {display:none;}
+.page-grid .page-item,.page-drop-slot,.page-add-tile {aspect-ratio:210 / 340;min-width:0;margin:0;box-sizing:border-box;}
+.page-grid .page-item {padding:0;}
+.page-grid .page-item .page-thumb {display:grid;grid-template-rows:minmax(0,1fr) 18px;gap:6px;padding:6px;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.page-grid .page-thumb .page-image-preview {height:100%;min-height:0;max-height:none;}
+.page-grid .page-more {width:23px;height:25px;right:0;top:0;}
+.page-add-tile {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;width:100%;padding:10px 4px;border:1px dashed var(--t-accent,#91a584);border-radius:6px;font-size:11px;white-space:nowrap;}
+.page-drop-slot {display:flex;align-items:center;justify-content:center;border:2px dashed var(--t-accent,#91a584);border-radius:6px;background:var(--t-selected,#e5eddf);font-size:10px;opacity:.65;animation:ui-fade-in 120ms ease-out;}
+.page-drag-ghost {position:fixed;left:0;top:0;z-index:90;display:grid;grid-template-rows:minmax(0,1fr) 18px;gap:6px;padding:6px;pointer-events:none;border:1px solid var(--t-accent,#91a584);border-radius:7px;background:var(--t-panel,#fffefa);color:var(--t-text,#345d48);box-shadow:0 10px 28px #0004;opacity:.94;transform-origin:center;will-change:transform;}
+.page-drag-ghost img {display:block;object-fit:contain;width:100%;height:100%;min-height:0;border-radius:3px;}
+.page-drag-ghost small {text-align:center;font-size:10px;}
+[data-theme="dark"] .page-drag-ghost {background:var(--t-panel,#213426);color:var(--t-text,#d2e5c1);}
+[data-theme="dark"] .page-drop-slot {background:var(--t-selected,#31472b);}
+.page-drag-status {position:fixed;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.page-grid.sorting .page-item {pointer-events:none;}
+@media(max-width:650px){.view-editor .page-strip{width:232px;}.view-editor .page-strip.pages-collapsed{width:44px;}}
