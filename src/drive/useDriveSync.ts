@@ -9,7 +9,8 @@ import {
 } from "./sync";
 import { loadSetting, saveSetting } from "../storage";
 import { DEFAULT_GOOGLE_CLIENT_ID } from "./config";
-type Props = {
+export type SyncProps = {
+  enabled?: boolean;
   snapshot: LibrarySnapshot;
   ready: boolean;
   canSync: () => boolean;
@@ -20,7 +21,7 @@ type Props = {
     key: string,
   ) => Promise<boolean>;
 };
-export function useDriveSync(props: Props) {
+export function useDriveSync(props: SyncProps) {
   const callbacks = useRef(props);
   callbacks.current = props;
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
@@ -48,6 +49,7 @@ export function useDriveSync(props: Props) {
     if (
       running.current ||
       !repo ||
+      callbacks.current.enabled === false ||
       !callbacks.current.ready ||
       !callbacks.current.canSync()
     )
@@ -74,12 +76,12 @@ export function useDriveSync(props: Props) {
         state: state.current,
         getLocal: () => callbacks.current.snapshot,
         persistState: async (next) => {
-          if (epoch !== generation.current) throw new SyncRetry();
+          if (epoch !== generation.current || callbacks.current.enabled === false) throw new SyncRetry();
           await saveSetting(stateKey.current, next);
           state.current = structuredClone(next);
         },
         apply: async (next, nextState, expected) => {
-          if (epoch !== generation.current) return false;
+          if (epoch !== generation.current || callbacks.current.enabled === false) return false;
           const applied = await callbacks.current.apply(
             next,
             nextState,
@@ -123,7 +125,7 @@ export function useDriveSync(props: Props) {
     }
   }, []);
   useEffect(() => {
-    if (!clientId) return;
+    if (!clientId || props.enabled === false) return;
     let active = true;
     setAuthReady(false);
     void loadGoogleIdentity()
@@ -136,11 +138,11 @@ export function useDriveSync(props: Props) {
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [clientId, props.enabled]);
   useEffect(() => {
     const timeout = setTimeout(() => void tick(), 3000);
     return () => clearTimeout(timeout);
-  }, [props.snapshot.notes, props.snapshot.folders, connected, tick]);
+  }, [props.snapshot.notes, props.snapshot.folders, connected, tick, props.enabled]);
   useEffect(() => {
     const timer = setInterval(() => void tick(), 30000),
       wake = () => void tick();
@@ -153,7 +155,7 @@ export function useDriveSync(props: Props) {
     };
   }, [tick]);
   function connect() {
-    if (!authReady || !clientId || running.current) return;
+    if (!authReady || !clientId || running.current || callbacks.current.enabled === false) return;
     const epoch = ++generation.current;
     setWorking(true);
     setStatus("Googleに接続中…");

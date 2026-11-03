@@ -1,7 +1,8 @@
 import {useDismiss} from "./useDismiss";
 import { flushSync } from "react-dom";
 import { useDriveSync } from "./drive/useDriveSync";
-import { DrivePanel } from "./drive/DrivePanel";
+import {SyncPanel,type SyncMethod} from "./SyncPanel";
+import {useFolderSync} from "./folderSync/useFolderSync";
 import type { SyncState, LibrarySnapshot } from "./drive/sync";
 import { createRoot } from "react-dom/client";
 import { useEffect, useRef, useState } from "react";
@@ -40,6 +41,8 @@ import {
   loadNotes,
   saveSyncSnapshot,
   loadPreferences,
+  loadSetting,
+  saveSetting,
   savePreferences,
   loadFolders,
   saveFolders,
@@ -150,13 +153,19 @@ function App() {
   notesRef.current = notes;
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
-  const drive = useDriveSync({
+  const [syncMethod,setSyncMethod]=useState<SyncMethod>("google");
+  const syncSaving=useRef(false);
+  const syncProps={
     snapshot: { notes, folders },
     ready,
     canSync: () =>
       pending.current === 0 && !failed.current && !writing.current && !busy,
     apply: applyIncoming,
-  });
+  };
+  const drive = useDriveSync({...syncProps,enabled:ready&&syncMethod==="google"});
+  const folderSync = useFolderSync({...syncProps,enabled:ready&&syncMethod==="folder"});
+  syncSaving.current=drive.working||folderSync.working;
+  function changeSyncMethod(method:SyncMethod){setSyncMethod(method);enqueue(()=>saveSetting("sync-method",method));}
   async function applyIncoming(
     next: LibrarySnapshot,
     state: SyncState,
@@ -170,7 +179,7 @@ function App() {
       foldersRef.current !== expected.folders
     )
       return false;
-    flushSync(() => setBusy("Google Driveの変更を反映中"));
+    flushSync(() => setBusy("同期の変更を反映中"));
     try {
       await queue.current;
       if (
@@ -285,10 +294,11 @@ function App() {
     let release: () => void = () => {};
     const init = async () => {
       try {
-        const [found, storedFolders, storedPreferences] = await Promise.all([
+        const [found, storedFolders, storedPreferences, storedSyncMethod] = await Promise.all([
           loadNotes(),
           loadFolders(),
           loadPreferences(),
+          loadSetting<SyncMethod>("sync-method"),
         ]);
         setFolders(
           normalizeFolders([
@@ -300,6 +310,7 @@ function App() {
         setPreferences(pref);
         preferencesRef.current = pref;
         setTool(penKind(pref.activePen,pref.pens[pref.activePen]));
+        setSyncMethod(storedSyncMethod==="folder"?"folder":"google");
         if (!alive) return;
         if (found.length) {
           setNotes(found.sort((a, b) => b.updated - a.updated));
@@ -343,7 +354,7 @@ function App() {
   }, []);
   useEffect(() => {
     const listener = (e: BeforeUnloadEvent) => {
-      if (pending.current || failed.current || writing.current) {
+      if (pending.current || failed.current || writing.current || syncSaving.current) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -847,9 +858,9 @@ function App() {
         }}
       />
       {settingsOpen && <SettingsPage ready={ready} onApply={view==="editor"&&note?.pages.some(p=>p.pdfIndex===undefined)?()=>{if(!note||!page)return;const p=preferencesRef.current;updateNote({...note,pages:applyPaperTemplate(note.pages,{...page,pdfIndex:undefined,paper:p.paperPattern,paperColor:p.paperColor==="auto"?(dark?"#1e2822":"#fffefa"):p.paperColor,backgroundImage:p.paperImage},dark)});}:undefined} value={preferences} onChange={storePreferences} onClose={closeSettings}
-        drive={<DrivePanel drive={drive}/>}
+        sync={<SyncPanel method={syncMethod} onChange={changeSyncMethod} drive={drive} folder={folderSync} ready={ready}/>}
         backup={backupAction} restore={()=>backupInput.current?.click()} help={<HelpContent/>}
-        pwa={<PWAControls canReload={()=>pending.current===0&&!failed.current&&!writing.current}/>} onError={setError} error={error}/>}
+        pwa={<PWAControls canReload={()=>pending.current===0&&!failed.current&&!writing.current&&!syncSaving.current}/>} onError={setError} error={error}/>}
       {busy && (
         <div className="busy-overlay" role="status">
           <LoaderCircle className="spin" size={25} />
