@@ -2999,4 +2999,8 @@ main {
 .editor-toolbar .tool-picker {flex-wrap:nowrap;min-width:max-content;max-width:none;}
 .pen-family {flex-shrink:0;}
 .pen-family+.pen-family {border-left:1px solid var(--t-accent,#c1ceba);padding-left:8px;}
-.pen-family .add-pen {width:28px;border:1px dashed var(--t-accent,#91a584);border-radius:7px;flex-shrink:0;}
+.pen-family .add-pen {border:1px dashed var(--t-accent,#91a584);border-radius:7px;flex-shrink:0;}
+.editor-toolbar .toolbar-content {padding:3px;}
+.editor-toolbar .tool-picker .tool {flex:0 0 35px;box-sizing:border-box;}
+.tool-settings-popover .delete-pen {display:flex;align-items:center;justify-content:center;gap:8px;min-height:36px;border:1px solid currentColor;border-radius:7px;color:#a8454a;font-size:12px;}
+[data-theme="dark"] .tool-settings-popover .delete-pen {color:#eaa3a5;}

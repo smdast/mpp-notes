@@ -64,6 +64,8 @@ import { normalizeFolders, relocateFolder } from "./folders";
 import {
   defaultPreferences,
   addPen,
+  deletePen,
+  penIds,
   penKind,
   type PenKind,
   readPreferences,
@@ -237,6 +239,10 @@ function App() {
   function choosePen(id: PenId) {
     storePreferences({ ...preferencesRef.current, activePen: id });
     setTool(penKind(id,preferencesRef.current.pens[id]));
+  }
+  function removePen() {
+    const next=deletePen(preferencesRef.current,preferencesRef.current.activePen);
+    storePreferences(next);setTool(penKind(next.activePen,next.pens[next.activePen]));
   }
   useEffect(() => {
     const route = () => {
@@ -415,13 +421,11 @@ function App() {
           l: "lasso",
           v: "hand",
         };
-        if (e.key.toLowerCase() === "p")
-          choosePen(
-            penKind(preferencesRef.current.activePen,preferencesRef.current.pens[preferencesRef.current.activePen]) === "marker"
-              ? "pen1"
-              : preferencesRef.current.activePen,
-          );
-        else if (e.key.toLowerCase() === "h") choosePen("marker");
+        if (["p","h"].includes(e.key.toLowerCase())) {
+          const pref=preferencesRef.current,kind=e.key.toLowerCase()==="h"?"marker":"pen";
+          const id=penKind(pref.activePen,pref.pens[pref.activePen])===kind?pref.activePen:penIds(pref,kind)[0];
+          if(id)choosePen(id);
+        }
         else if (t[e.key.toLowerCase()]) setTool(t[e.key.toLowerCase()]);
       }
     };
@@ -735,7 +739,7 @@ function App() {
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
               eraserMode={eraserMode} eraserSize={eraserSize}
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}
-              onUndo={undo} onTool={setTool} onPen={choosePen} onAddPen={registerPen} onSettings={setPen} onColor={setColor}
+              onUndo={undo} onTool={setTool} onPen={choosePen} onAddPen={registerPen} onDeletePen={removePen} onSettings={setPen} onColor={setColor}
               onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize}
               onScratchErase={scratchErase=>storePreferences({...preferencesRef.current,scratchErase})}/>
             {error && (

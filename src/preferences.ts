@@ -13,6 +13,7 @@ export type PenSettings = {
   customColor?: boolean;
 };
 export type Preferences = {
+  deletedPens?: BuiltinPenId[];
   scratchErase: boolean;
   pagesCollapsed:boolean;
   eraserMode: "stroke" | "area";
@@ -66,7 +67,10 @@ export function readPreferences(value: unknown): Preferences {
       };
     }
   }
-  if(isPenId(v.activePen)&&Object.hasOwn(base.pens,v.activePen))base.activePen=v.activePen;
+  if(Array.isArray(v.deletedPens))base.deletedPens=[...new Set(v.deletedPens.filter(id=>["pen1","pen2","pen3","marker"].includes(id)))];
+  let available=[...penIds(base,"pen"),...penIds(base,"marker")];
+  if(!available.length){base.deletedPens=base.deletedPens?.filter(id=>id!=="pen1");available=["pen1"];}
+  base.activePen=isPenId(v.activePen)&&available.includes(v.activePen)?v.activePen:available[0];
   return base;
 }
 export const pressureValue = (value: number, enabled: boolean) =>
@@ -79,10 +83,21 @@ export function penKind(id:PenId,settings:PenSettings):PenKind {
  return id==="marker" || (id.startsWith("custom-")&&settings.kind==="marker")?"marker":"pen";
 }
 export function penIds(value:Preferences,kind:PenKind):PenId[]{
- return (Object.keys(value.pens) as PenId[]).filter(id=>penKind(id,value.pens[id])===kind);
+ return (Object.keys(value.pens) as PenId[]).filter(id=>!value.deletedPens?.includes(id as BuiltinPenId)&&penKind(id,value.pens[id])===kind);
 }
 export function addPen(value:Preferences,kind:PenKind,id:PenId=`custom-${crypto.randomUUID()}`):Preferences {
  if(!isPenId(id)||!id.startsWith("custom-")||Object.hasOwn(value.pens,id))throw new Error("ペンを追加できませんでした。");
- const source=penKind(value.activePen,value.pens[value.activePen])===kind?value.pens[value.activePen]:value.pens[penIds(value,kind)[0]];
+ const source=(penKind(value.activePen,value.pens[value.activePen])===kind?value.pens[value.activePen]:value.pens[penIds(value,kind)[0]])||defaultPreferences().pens[kind==="marker"?"marker":"pen1"];
  return {...value,activePen:id,pens:{...value.pens,[id]:{...source,kind,shapeCorrection:source.shapeCorrection!==false,customColor:source.customColor===true}}};
+}
+export function deletePen(value:Preferences,id:PenId):Preferences {
+ const available=[...penIds(value,"pen"),...penIds(value,"marker")];
+ if(!available.includes(id)||available.length<=1)return value;
+ const kind=penKind(id,value.pens[id]),pens={...value.pens};
+ let deletedPens=value.deletedPens;
+ if(id.startsWith("custom-"))delete pens[id];
+ else deletedPens=[...(deletedPens||[]),id as BuiltinPenId];
+ const next={...value,pens,deletedPens};
+ if(value.activePen===id)next.activePen=penIds(next,kind)[0]||available.find(key=>key!==id)!;
+ return next;
 }

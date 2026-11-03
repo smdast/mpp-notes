@@ -1,7 +1,7 @@
 import {useState,useRef,useEffect,useLayoutEffect} from "react";
 import {createPortal} from "react-dom";
 import {useDismiss} from "./useDismiss";
-import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine } from "lucide-react";
+import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2 } from "lucide-react";
 import type {LucideIcon} from "lucide-react";
 import type { Tool } from "./Sheet";
 import type { EraserMode } from "./editing";
@@ -15,6 +15,7 @@ type Props = {
   onSettings: (settings: Partial<PenSettings>) => void; onColor: (color: string) => void;
   onEraserMode: (mode: EraserMode) => void; onEraserSize: (size: number) => void;
   onScratchErase:(enabled:boolean)=>void;
+  onDeletePen:()=>void;
 };
 export function EditorToolbar(props: Props) {
   const {tool, preferences, color, colors, dark} = props;
@@ -80,6 +81,7 @@ export function EditorToolbar(props: Props) {
         <SettingSwitch label="筆圧検知" text="筆圧" Icon={Gauge} checked={settings.pressure} onChange={pressure=>props.onSettings({pressure})}/>
         <SettingSwitch label="図形補正" Icon={Shapes} checked={settings.shapeCorrection!==false} onChange={shapeCorrection=>props.onSettings({shapeCorrection})}/>
         {tool === "pen" && <SettingSwitch label="こすって消去" Icon={ScanLine} checked={preferences.scratchErase} onChange={props.onScratchErase}/>}
+        <button className="delete-pen" disabled={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1} title={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1?"最後の1本は削除できません":undefined} onClick={()=>{setOpen(false);props.onDeletePen();}}><Trash2 size={16}/>{tool==="marker"?"蛍光ペンを削除":"ペンを削除"}</button>
       </div>}
       {tool === "eraser" && <div className="context-controls eraser-options" aria-label="消しゴムの設定">
         <div className="eraser-modes" role="group" aria-label="消しゴムの種類">

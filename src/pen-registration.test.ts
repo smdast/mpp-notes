@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import {it,expect} from "vitest";
-import {defaultPreferences,readPreferences,addPen,penIds,penKind} from "./preferences";
+import {defaultPreferences,readPreferences,addPen,deletePen,penIds,penKind} from "./preferences";
 import {savePreferences,loadPreferences} from "./storage";
 import {penColor} from "./paper";
 it("migrates the legacy shared correction flag to every pen while preserving explicit overrides",()=>{
@@ -36,4 +36,20 @@ it("rejects invalid registrations and active IDs without losing the built-in pen
  const restored=readPreferences({activePen:"toString",pens:{"custom-bad":{...valid,kind:"eraser"},"custom-no-kind":{color:"#000000",width:3,pressure:true},"custom-negative":{...valid,width:-1},"custom-ok":{...valid,kind:"marker",shapeCorrection:false}}});
  expect(restored.activePen).toBe("pen1");expect(penIds(restored,"pen")).toHaveLength(3);expect(penIds(restored,"marker")).toEqual(["marker","custom-ok"]);
  expect(readPreferences({pens:{"custom-ok":restored.pens["custom-ok"]},activePen:"custom-ok"}).activePen).toBe("custom-ok");
+});
+it("deletes built-in and registered pens, restores their absence and selects an available replacement",async()=>{
+ let prefs=addPen(defaultPreferences(),"pen","custom-delete");
+ prefs=deletePen(prefs,"custom-delete");expect(prefs.pens).not.toHaveProperty("custom-delete");expect(prefs.activePen).toBe("pen1");
+ prefs=deletePen(prefs,"pen1");expect(prefs.activePen).toBe("pen2");expect(penIds(prefs,"pen")).toEqual(["pen2","pen3"]);
+ prefs=deletePen(prefs,"marker");expect(penIds(prefs,"marker")).toEqual([]);
+ await savePreferences(prefs);const restored=readPreferences(await loadPreferences());
+ expect(penIds(restored,"pen")).toEqual(["pen2","pen3"]);expect(penIds(restored,"marker")).toEqual([]);expect(restored.activePen).toBe("pen2");
+ const added=addPen(restored,"marker","custom-new-marker");expect(penIds(added,"marker")).toEqual(["custom-new-marker"]);expect(added.pens[added.activePen]).toMatchObject({kind:"marker",width:4});
+ expect(penIds(defaultPreferences(),"pen")).toHaveLength(3);
+});
+it("keeps one usable preset and rejects a deleted active pen when restoring",()=>{
+ let prefs=deletePen(defaultPreferences(),"pen1");prefs=deletePen(prefs,"pen2");prefs=deletePen(prefs,"pen3");
+ expect(prefs.activePen).toBe("marker");expect(deletePen(prefs,"marker")).toBe(prefs);
+ const restored=readPreferences({...prefs,activePen:"pen1"});expect(restored.activePen).toBe("marker");
+ const empty=readPreferences({deletedPens:["pen1","pen2","pen3","marker"]});expect(empty.activePen).toBe("pen1");expect(penIds(empty,"pen")).toEqual(["pen1"]);
 });
