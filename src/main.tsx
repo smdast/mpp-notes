@@ -3,6 +3,8 @@ import { flushSync } from "react-dom";
 import { useDriveSync } from "./drive/useDriveSync";
 import {SyncPanel,type SyncMethod} from "./SyncPanel";
 import {useFolderSync} from "./folderSync/useFolderSync";
+import {SyncActivity} from "./syncScheduling";
+import {cancelSyncWork} from "./syncWork";
 import type { SyncState, LibrarySnapshot } from "./drive/sync";
 import { createRoot } from "react-dom/client";
 import { useEffect, useRef, useState } from "react";
@@ -154,10 +156,23 @@ function App() {
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
   const [syncMethod,setSyncMethod]=useState<SyncMethod>("google");
+  const syncActivity=useRef(new SyncActivity());
+  useEffect(()=>{
+    const record=(event:Event)=>{
+      const pointer=event as PointerEvent;
+      if(event.type==="pointermove"&&!pointer.buttons&&pointer.pointerType!=="pen")return;
+      syncActivity.current.record();cancelSyncWork();
+    };
+    const events=["pointerdown","pointermove","pointerup","pointercancel","wheel","keydown"];
+    for(const type of events)window.addEventListener(type,record,{capture:true,passive:true});
+    return()=>{for(const type of events)window.removeEventListener(type,record,true);cancelSyncWork(true);};
+  },[]);
   const syncSaving=useRef(false);
   const syncProps={
     snapshot: { notes, folders },
     ready,
+    isIdle:()=>syncActivity.current.isIdle(),
+    activityVersion:()=>syncActivity.current.version,
     canSync: () =>
       pending.current === 0 && !failed.current && !writing.current && !busy,
     apply: applyIncoming,

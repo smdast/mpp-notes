@@ -12,6 +12,7 @@ import {
   type LibrarySnapshot,
 } from "./sync";
 class MemoryDrive implements Repository {
+  reads=0;
   events: Revision[] = [];
   payloads = new Map<string, Payload>();
   afterWrite?: () => void;
@@ -19,6 +20,7 @@ class MemoryDrive implements Repository {
     return structuredClone(this.events);
   }
   async read(id: string) {
+    this.reads++;
     const value = this.payloads.get(id);
     if (!value) throw new Error("Missing");
     return value.kind === "note"
@@ -46,11 +48,21 @@ it("keeps timestamps stable and avoids no-op sync edits after archive round trip
     b = client(repo);
   await a.run();
   await b.run();
+  repo.reads=0;
   const count = repo.events.length;
   expect(b.local.notes[0].updated).toBe(note.updated);
   expect((await b.run()).changed).toBe(false);
   expect((await a.run()).changed).toBe(false);
   expect(repo.events).toHaveLength(count);
+  expect(repo.reads).toBe(0);
+});
+it("defers before publishing a new revision if writing resumes while preparing its payload",async()=>{
+  const repo=new MemoryDrive(),a=client(repo,[newNote("最初")]);await a.run();const count=repo.events.length;
+  a.local={...a.local,notes:[{...a.local.notes[0],title:"保持する変更"}]};let writing=false,applied=false;
+  repo.afterWrite=()=>{writing=true;};
+  await expect(synchronize({repository:repo,state:a.state,getLocal:()=>a.local,persistState:async state=>{a.state=state;},apply:async()=>{applied=true;return true;},checkpoint:async()=>{if(writing)throw new SyncRetry();}})).rejects.toBeInstanceOf(SyncRetry);
+  expect(repo.events).toHaveLength(count);expect(applied).toBe(false);expect(a.local.notes[0].title).toBe("保持する変更");
+  await a.run();expect(a.local.notes).toHaveLength(1);expect(repo.events).toHaveLength(count+1);
 });
 function client(repo: MemoryDrive, notes: Note[] = [], folders: string[] = []) {
   const c = {

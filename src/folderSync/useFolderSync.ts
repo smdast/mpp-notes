@@ -4,6 +4,8 @@ import {newSyncState, synchronize, SyncRetry, type SyncState} from "../drive/syn
 import type {SyncProps} from "../drive/useDriveSync";
 import {FolderRepository} from "./repository";
 import {FolderPending, folderError, folderSyncSupported, pickSyncDirectory, type SyncDirectory} from "./files";
+import {SYNC_IDLE_MS,SYNC_POLL_MS,syncCheckpoint} from "../syncScheduling";
+import {SyncWorkInterrupted} from "../syncWork";
 
 export const CONNECTION_KEY = "folder-sync-connection";
 type Connection = {version: 1; folder: SyncDirectory; key: string};
@@ -15,20 +17,28 @@ export function useFolderSync(props: SyncProps) {
   const [message, setMessage] = useState(""), [working, setWorking] = useState(false), [permissionNeeded, setPermissionNeeded] = useState(false), [conflicts, setConflicts] = useState(0);
   const connection = useRef<Connection | null>(null), repository = useRef<FolderRepository | null>(null), state = useRef<SyncState>(newSyncState());
   const running = useRef(false), generation = useRef(0), alive = useRef(true);
-  const tick = useCallback(async () => {
+  const retry=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const tick = useCallback(async (manual=false) => {
     const config = connection.current;
-    if (!config || !supported || running.current || callbacks.current.enabled === false || !callbacks.current.ready || !callbacks.current.canSync()) return;
+    if (!config || !supported || running.current || callbacks.current.enabled === false || !callbacks.current.ready) return;
+    if(!callbacks.current.canSync()||(!manual&&callbacks.current.isIdle?.()===false)){
+      clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);return;
+    }
+    clearTimeout(retry.current);
     running.current = true;const epoch = generation.current;
     setWorking(true);setMessage("");
     const active = () => alive.current && epoch === generation.current && callbacks.current.enabled !== false;
+    const checkpoint=syncCheckpoint(()=>callbacks.current,manual);
     try {
+      await checkpoint();
       if (await config.folder.queryPermission({mode: "readwrite"}) !== "granted") {setPermissionNeeded(true);setStatus("アクセス許可が必要");return;}
       setPermissionNeeded(false);setStatus("フォルダーと同期中…");
       const repo = repository.current || await FolderRepository.open(config.folder);
       if (!active()) return;repository.current = repo;
+      repo.setCheckpoint(checkpoint);
       await repo.verifyKnown(state.current);
       const result = await synchronize({
-        repository: repo, state: state.current, getLocal: () => callbacks.current.snapshot,
+        repository: repo, state: state.current, getLocal: () => callbacks.current.snapshot,checkpoint,
         persistState: async next => {if (!active()) throw new SyncRetry();await saveSetting(config.key, next);state.current = structuredClone(next);},
         apply: async (next, nextState, expected) => {
           if (!active()) return false;
@@ -42,7 +52,7 @@ export function useFolderSync(props: SyncProps) {
       if (result.conflicts) setMessage("同時編集を検出しました。両方の内容を競合コピーに残しています。");
     } catch (error) {
       if (!active()) return;
-      if (error instanceof SyncRetry) setStatus("編集中・次回同期で再試行");
+      if (error instanceof SyncRetry || error instanceof SyncWorkInterrupted) {setStatus("編集中・次回同期で再試行");clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);}
       else if (error instanceof FolderPending) {setStatus("PCの同期完了待ち");setMessage(error.message);}
       else {
         setStatus("フォルダーへの同期を再試行してください");setMessage(folderError(error));
@@ -63,14 +73,14 @@ export function useFolderSync(props: SyncProps) {
       } catch (error) {if (!cancelled) setMessage(folderError(error));}
       finally {if (!cancelled) setInitialized(true);}
     })();
-    return () => {cancelled = true;alive.current = false;generation.current++;repository.current?.stop();};
+    return () => {cancelled = true;alive.current = false;generation.current++;clearTimeout(retry.current);repository.current?.stop();};
   }, [supported]);
   useEffect(() => {
     if (!initialized) return;
-    const timer = setTimeout(() => void tick(), 3000);return () => clearTimeout(timer);
+    const timer = setTimeout(() => void tick(), SYNC_IDLE_MS);return () => clearTimeout(timer);
   }, [initialized, props.snapshot.notes, props.snapshot.folders, props.enabled, tick]);
   useEffect(() => {
-    const timer = setInterval(() => void tick(), 30000), wake = () => void tick();
+    const timer = setInterval(() => void tick(), SYNC_POLL_MS), wake = () => {clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);};
     window.addEventListener("focus", wake);window.addEventListener("online", wake);
     return () => {clearInterval(timer);window.removeEventListener("focus", wake);window.removeEventListener("online", wake);};
   }, [tick]);
@@ -88,7 +98,7 @@ export function useFolderSync(props: SyncProps) {
       connection.current = config;state.current = readState(saved);setFolderName(folder.name);setPermissionNeeded(false);setConflicts(0);setStatus("保存先を設定しました");
       selected=true;
     }).catch(error => {if (!(error instanceof Error && error.name === "AbortError")) setMessage(error instanceof Error&&error.name==="NotAllowedError"?"フォルダーへのアクセスは許可されませんでした。保存先を選択し直して読み書きを許可してください。":folderError(error));})
-      .finally(() => {running.current = false;if (alive.current) {setWorking(false);if(selected)void tick();}});
+      .finally(() => {running.current = false;if (alive.current) {setWorking(false);if(selected)void tick(true);}});
   }
   function resume() {
     if (running.current || !connection.current) return;
@@ -99,13 +109,14 @@ export function useFolderSync(props: SyncProps) {
       setPermissionNeeded(result !== "granted");
       permitted=result==="granted";
       if (result !== "granted") setMessage("アクセスは許可されませんでした。端末内のノートはそのまま利用できます。");
-    }).catch(error => setMessage(folderError(error))).finally(() => {running.current = false;if (alive.current) {setWorking(false);if(permitted)void tick();}});
+    }).catch(error => setMessage(folderError(error))).finally(() => {running.current = false;if (alive.current) {setWorking(false);if(permitted)void tick(true);}});
   }
   async function disconnect() {
     if (running.current) return;
     generation.current++;repository.current?.stop();repository.current = null;
+    clearTimeout(retry.current);
     connection.current = null;setFolderName("");setPermissionNeeded(false);setConflicts(0);setStatus("未設定");setMessage("");
     try {await saveSetting(CONNECTION_KEY, undefined);} catch (error) {setMessage(folderError(error));}
   }
-  return {supported, initialized, folderName, status, message, working, permissionNeeded, conflicts, choose, resume, disconnect, sync: () => void tick()};
+  return {supported, initialized, folderName, status, message, working, permissionNeeded, conflicts, choose, resume, disconnect, sync: () => void tick(true)};
 }

@@ -29,7 +29,7 @@ export function pickSyncDirectory() {
   return picker.call(window, {id: "mpp-notes-sync", mode: "readwrite"});
 }
 export class FolderPending extends Error {
-  constructor(message = "同期ファイルがまだ揃っていません。PCの同期ソフトの完了後に再試行します。") {super(message);}
+  constructor(message = "同期ファイルがまだ揃っていません。PCの同期ソフトの完了後に再試行します。") {super(message);this.name="FolderPending";}
 }
 export const notFound = (error: unknown) => error instanceof Error && error.name === "NotFoundError";
 export async function readFile(directory: SyncDirectory, name: string, limit: number) {

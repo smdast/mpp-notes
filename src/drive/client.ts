@@ -1,5 +1,6 @@
-import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
-import { makeBackup, readBackupBundle } from "../backup";
+import { unzipSync, strFromU8 } from "fflate";
+import { readBackupBundle } from "../backup";
+import {canUseSyncWorker,packDriveInBackground,readDriveInBackground} from "../syncWork";
 import {
   type Payload,
   type Revision,
@@ -243,18 +244,8 @@ export class DriveSession implements Repository {
   }
   async write(payload: Payload) {
     if (payload.kind === "note") {
-      let data: Uint8Array;
-      if (payload.note.pdf) {
-        const reference = await this.pdfReference(payload.note.pdf);
-        const files = unzipSync(
-          makeBackup([{ ...payload.note, pdf: undefined }]),
-        );
-        const manifest = JSON.parse(strFromU8(files["manifest.json"]));
-        manifest.notes[0].pdfFile = "pdf/" + payload.note.id + ".pdf";
-        files["manifest.json"] = strToU8(JSON.stringify(manifest));
-        files["remote-pdf.json"] = strToU8(JSON.stringify(reference));
-        data = zipSync(files);
-      } else data = makeBackup([payload.note]);
+      const reference=payload.note.pdf?await this.pdfReference(payload.note.pdf):undefined;
+      const data=await packDriveInBackground(payload.note,reference);
       return this.upload(
         "note-" + payload.note.id + ".zip",
         data,
@@ -327,6 +318,7 @@ export class DriveSession implements Repository {
     return data;
   }
   async read(id: string): Promise<Payload> {
+    if(canUseSyncWorker())return readDriveInBackground(this.token,this.expires,id);
     const bytes = await this.bytes(id);
     if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
       let expanded = 0;

@@ -1,5 +1,15 @@
 import type { Note } from "./model";
 const DB = "mpp-notes-v1";
+const diskVersions=new WeakMap<Note,string>();
+type StoredNote=Note&{__mppStorageVersion?:string};
+export const storedNoteVersion=(note:Note)=>diskVersions.get(note);
+export async function readSyncMetadata(id:string,version:string):Promise<Omit<Note,"pdf">>{
+  const db=await openDB(),tx=db.transaction("notes","readonly"),request=tx.objectStore("notes").get(id);
+  await completion(db,tx);
+  const value=request.result as StoredNote|undefined;
+  if(!value||value.__mppStorageVersion!==version){const error=new Error("保存済みのノートが変更されたため同期を延期しました。");error.name="SyncWorkInterrupted";throw error;}
+  const {__mppStorageVersion:_,pdf:__,...note}=value;return note;
+}
 export async function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open(DB, 2);
@@ -31,9 +41,11 @@ function completion(db: IDBDatabase, tx: IDBTransaction) {
 }
 function put(tx: IDBTransaction, note: Note, add = false) {
   const { pdf, ...metadata } = note;
+  const version=crypto.randomUUID();diskVersions.set(note,version);
+  const stored={...metadata,__mppStorageVersion:version};
   const store = tx.objectStore("notes");
-  if (add) store.add(metadata);
-  else store.put(metadata);
+  if (add) store.add(stored);
+  else store.put(stored);
   if (pdf) {
     const assets = tx.objectStore("pdfs");
     const r = assets.getKey(note.id);
@@ -50,6 +62,9 @@ export async function loadNotes(): Promise<Note[]> {
   request.onsuccess = () => {
     notes = request.result;
     for (const note of notes) {
+      const stored=note as StoredNote;
+      if(typeof stored.__mppStorageVersion==="string")diskVersions.set(note,stored.__mppStorageVersion);
+      delete stored.__mppStorageVersion;
       const r = tx.objectStore("pdfs").get(note.id);
       r.onsuccess = () => {
         if (r.result) note.pdf = r.result;

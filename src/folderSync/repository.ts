@@ -1,5 +1,7 @@
-import {zipSync, unzipSync, strToU8, strFromU8} from "fflate";
-import {makeBackup, readBackupBundle} from "../backup";
+import {unzipSync, strToU8, strFromU8} from "fflate";
+import {readBackupBundle} from "../backup";
+import {canUseSyncWorker,packInBackground,readFolderInBackground} from "../syncWork";
+import type {PdfReference} from "../syncCodec";
 import {hash, validRevision, type Payload, type Repository, type Revision, type SyncState} from "../drive/sync";
 import {FolderPending, readFile, writeFile, notFound, type SyncDirectory} from "./files";
 
@@ -17,6 +19,9 @@ export class FolderRepository implements Repository {
   private verified = new Set<string>();
   private pdfs = new Map<string, Uint8Array>();
   private stopped = false;
+  private checkpoint:()=>Promise<void>=async()=>{};
+  setCheckpoint(checkpoint:()=>Promise<void>){this.checkpoint=checkpoint;}
+  static readFrom(directory:SyncDirectory,name:string){return new FolderRepository(directory).read(name);}
   private constructor(readonly directory: SyncDirectory) {}
   static async open(selected: SyncDirectory) {
     const directory = selected.name === SYNC_DIRECTORY ? selected : await selected.getDirectoryHandle(SYNC_DIRECTORY, {create: true});
@@ -37,6 +42,7 @@ export class FolderRepository implements Repository {
   stop() {this.stopped = true;}
   private check() {if (this.stopped) throw new Error("フォルダー同期を停止しました。");}
   private async bytes(name: string, max = MAX) {
+    await this.checkpoint();
     this.check();
     if (!payloadName.test(name)) throw new Error("同期ファイルの参照が無効です。");
     const bytes = await readFile(this.directory, name, max);
@@ -45,29 +51,31 @@ export class FolderRepository implements Repository {
     return bytes;
   }
   private async store(kind: "note" | "folders" | "pdf", bytes: Uint8Array, digest?: string) {
+    await this.checkpoint();
     this.check();if (bytes.length > MAX) throw new Error("同期ファイルがサイズ上限（250 MB）を超えています。");
     const name = `${kind}-${digest || await hash(bytes)}.${kind === "note" ? "zip" : kind === "pdf" ? "pdf" : "json"}`;
     if (this.verified.has(name)) return name;
     let exists = false;
     try {const file = await (await this.directory.getFileHandle(name)).getFile();exists = file.size > 0;if (exists && await hash(new Uint8Array(await file.arrayBuffer())) !== name.split("-")[1].split(".")[0]) throw new FolderPending("同名の同期ファイルを確認できません。上書きせず停止しました。");}
     catch (error) {if (!notFound(error)) throw error;}
-    if (!exists) {this.check();await writeFile(this.directory, name, bytes);}
+    if (!exists) {await this.checkpoint();this.check();await writeFile(this.directory, name, bytes);}
     this.verified.add(name);return name;
   }
   async write(payload: Payload) {
+    await this.checkpoint();
     if (payload.kind === "folders") return this.store("folders", strToU8(JSON.stringify(payload)));
-    const {pdf, ...note} = payload.note;
-    const files = unzipSync(makeBackup([note]));
+    const {pdf} = payload.note;
+    let reference:PdfReference|undefined;
     if (pdf) {
       const digest = await pdfDigest(pdf), name = await this.store("pdf", pdf, digest);
-      const manifest = JSON.parse(strFromU8(files["manifest.json"]));
-      manifest.notes[0].pdfFile = "pdf/" + note.id + ".pdf";
-      files["manifest.json"] = strToU8(JSON.stringify(manifest));
-      files["folder-pdf.json"] = strToU8(JSON.stringify({name, digest}));
+      reference={name,digest};
     }
-    return this.store("note", zipSync(files, {mtime: new Date(1980, 0, 1)}));
+    await this.checkpoint();
+    const bytes=await packInBackground(payload.note,reference);
+    await this.checkpoint();return this.store("note",bytes);
   }
   async event(revision: Revision) {
+    await this.checkpoint();
     this.check();if (!validRevision(revision)) throw new Error("同期履歴が無効です。");
     const bytes = strToU8(JSON.stringify(revision));
     const name = `event-${revision.id}-${await hash(bytes)}.json`;
@@ -78,6 +86,7 @@ export class FolderRepository implements Repository {
   async list() {
     this.check();const names: string[] = [], available = new Set<string>();
     for await (const entry of this.directory.values()) {
+      if((names.length+available.size)%128===0)await this.checkpoint();
       if (entry.kind !== "file") continue;
       if (eventName.test(entry.name)) names.push(entry.name);
       if (payloadName.test(entry.name)) available.add(entry.name);
@@ -85,6 +94,7 @@ export class FolderRepository implements Repository {
     if (names.length > 50000) throw new Error("同期履歴が多すぎます。新しい保存先への切り替えをご検討ください。");
     const events: Revision[] = [];
     for (const name of names.sort()) {
+      if(events.length%128===0)await this.checkpoint();
       let revision = this.events.get(name);
       if (!revision) {
         const bytes = await readFile(this.directory, name, 1024 * 1024);
@@ -105,6 +115,10 @@ export class FolderRepository implements Repository {
     if (Object.values(state.known).some(value => value.heads.some(id => !ids.has(id)))) throw new FolderPending("前回の同期履歴が見つかりません。保存先とPCの同期状況を確認してください。端末内のノートは保持しています。");
   }
   async read(name: string): Promise<Payload> {
+    await this.checkpoint();
+    if(canUseSyncWorker()&&name.startsWith("note-")){
+      const payload=await readFolderInBackground(this.directory,name);await this.checkpoint();return payload;
+    }
     const bytes = await this.bytes(name);
     if (name.startsWith("folders-")) {
       let value;try {value = JSON.parse(strFromU8(bytes));} catch {throw new Error("フォルダーの同期データが無効です。");}

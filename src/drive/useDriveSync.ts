@@ -9,8 +9,12 @@ import {
 } from "./sync";
 import { loadSetting, saveSetting } from "../storage";
 import { DEFAULT_GOOGLE_CLIENT_ID } from "./config";
+import {SYNC_IDLE_MS,SYNC_POLL_MS,syncCheckpoint} from "../syncScheduling";
+import {SyncWorkInterrupted,cancelSyncWork} from "../syncWork";
 export type SyncProps = {
   enabled?: boolean;
+  isIdle?:()=>boolean;
+  activityVersion?:()=>number;
   snapshot: LibrarySnapshot;
   ready: boolean;
   canSync: () => boolean;
@@ -44,16 +48,19 @@ export function useDriveSync(props: SyncProps) {
       clearTimeout(retry.current);
     };
   }, []);
-  const tick = useCallback(async () => {
+  const tick = useCallback(async (manual=false) => {
     const repo = session.current;
     if (
       running.current ||
       !repo ||
       callbacks.current.enabled === false ||
-      !callbacks.current.ready ||
-      !callbacks.current.canSync()
+      !callbacks.current.ready
     )
       return;
+    if(!callbacks.current.canSync()||(!manual&&callbacks.current.isIdle?.()===false)){
+      clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);return;
+    }
+    clearTimeout(retry.current);
     if (!navigator.onLine) {
       setStatus("オフライン・端末内に保存");
       return;
@@ -70,10 +77,12 @@ export function useDriveSync(props: SyncProps) {
     setWorking(true);
     setStatus("同期中…");
     setMessage("");
+    const checkpoint=syncCheckpoint(()=>callbacks.current,manual);
     try {
       const result = await synchronize({
         repository: repo,
         state: state.current,
+        checkpoint,
         getLocal: () => callbacks.current.snapshot,
         persistState: async (next) => {
           if (epoch !== generation.current || callbacks.current.enabled === false) throw new SyncRetry();
@@ -108,9 +117,9 @@ export function useDriveSync(props: SyncProps) {
         );
     } catch (error) {
       if (epoch !== generation.current) return;
-      if (error instanceof SyncRetry) {
+      if (error instanceof SyncRetry || error instanceof SyncWorkInterrupted) {
         setStatus("編集中・次回同期で再試行");
-        retry.current = setTimeout(() => void tick(), 3000);
+        clearTimeout(retry.current);retry.current = setTimeout(() => void tick(), SYNC_IDLE_MS);
       } else {
         setStatus("同期を再試行してください");
         setMessage(
@@ -140,12 +149,12 @@ export function useDriveSync(props: SyncProps) {
     };
   }, [clientId, props.enabled]);
   useEffect(() => {
-    const timeout = setTimeout(() => void tick(), 3000);
+    const timeout = setTimeout(() => void tick(), SYNC_IDLE_MS);
     return () => clearTimeout(timeout);
   }, [props.snapshot.notes, props.snapshot.folders, connected, tick, props.enabled]);
   useEffect(() => {
-    const timer = setInterval(() => void tick(), 30000),
-      wake = () => void tick();
+    const timer = setInterval(() => void tick(), SYNC_POLL_MS),
+      wake = () => {clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);};
     window.addEventListener("online", wake);
     window.addEventListener("focus", wake);
     return () => {
@@ -180,7 +189,7 @@ export function useDriveSync(props: SyncProps) {
         setConnected(true);
         setWorking(false);
         setStatus("接続済み");
-        void tick();
+        void tick(true);
       })
       .catch((error) => {
         if (epoch === generation.current) {
@@ -194,6 +203,8 @@ export function useDriveSync(props: SyncProps) {
   }
   function disconnect() {
     generation.current++;
+    cancelSyncWork(true);
+    clearTimeout(retry.current);
     session.current?.disconnect();
     session.current = null;
     setConnected(false);
@@ -213,6 +224,6 @@ export function useDriveSync(props: SyncProps) {
     working,
     connect,
     disconnect,
-    sync: () => void tick(),
+    sync: () => void tick(true),
   };
 }

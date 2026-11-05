@@ -1,5 +1,8 @@
 import { uid, type Note } from "../model";
 import { normalizeFolders } from "../folders";
+import {hash} from "../syncCodec";
+import {fingerprintInBackground} from "../syncWork";
+export {hash} from "../syncCodec";
 export type Payload =
   | { kind: "note"; note: Note }
   | { kind: "folders"; folders: string[] };
@@ -37,28 +40,6 @@ export class SyncRetry extends Error {
     super("編集中の変更を保護しました。次回の同期で再試行します。");
   }
 }
-export const hash = async (value: string | Uint8Array) => {
-  const bytes =
-    typeof value === "string" ? new TextEncoder().encode(value) : value;
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new Uint8Array(bytes).buffer,
-  );
-  return [...new Uint8Array(digest)]
-    .map((v) => v.toString(16).padStart(2, "0"))
-    .join("");
-};
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object")
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, v]) => v !== undefined)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([key, v]) => [key, canonical(v)]),
-    );
-  return value;
-}
 const noteHash = new WeakMap<Note, Promise<string>>(),
   pdfHash = new WeakMap<Uint8Array, Promise<string>>();
 export async function fingerprint(payload: Payload): Promise<string> {
@@ -83,9 +64,11 @@ export async function fingerprint(payload: Payload): Promise<string> {
         }
         pdfDigest = await promise;
       }
-      return hash(JSON.stringify(canonical({ ...n, pdf: pdfDigest })));
+      return fingerprintInBackground(n,pdfDigest);
     })();
     noteHash.set(n, result);
+    const promise=result;
+    void promise.catch(()=>{if(noteHash.get(n)===promise)noteHash.delete(n);});
   }
   return result;
 }
@@ -126,6 +109,7 @@ export async function synchronize({
   getLocal,
   persistState,
   apply,
+  checkpoint=async()=>{},
 }: {
   repository: Repository;
   state: SyncState;
@@ -136,11 +120,13 @@ export async function synchronize({
     state: SyncState,
     expected: LibrarySnapshot,
   ) => Promise<boolean>;
+  checkpoint?:()=>Promise<void>;
 }) {
   const snapshot = getLocal(),
     startNotes = snapshot.notes,
     startFolders = snapshot.folders;
   const next: SyncState = structuredClone(state);
+  await checkpoint();
   let events = await repository.list();
   const byId = new Map(events.map((e) => [e.id, e]));
   let conflicts = 0;
@@ -149,7 +135,12 @@ export async function synchronize({
     if (!e.fileId) throw new Error("同期データが不足しています。");
     let payload = cache.get(e.id);
     if (!payload) {
-      payload = await repository.read(e.fileId);
+      await checkpoint();
+      const known=next.known[e.entity],current=local.get(e.entity);
+      // Unchanged immutable heads already have their exact contents locally.
+      // Avoid inflating and re-hashing every historical ZIP on every poll.
+      payload=current&&known?.heads.length===1&&known.heads[0]===e.id&&await fingerprint(current)===known.fingerprint?current:await repository.read(e.fileId);
+      await checkpoint();
       cache.set(e.id, payload);
     }
     if (
@@ -163,10 +154,12 @@ export async function synchronize({
   };
   const append = async (revision: Revision, payload?: Payload) => {
     if (byId.has(revision.id)) return byId.get(revision.id)!;
+    await checkpoint();
     if (payload) {
       revision.fileId = await repository.write(payload);
       cache.set(revision.id, payload);
     }
+    await checkpoint();
     await repository.event(revision);
     byId.set(revision.id, revision);
     events.push(revision);
@@ -179,6 +172,7 @@ export async function synchronize({
   );
   local.set("__folders__", { kind: "folders", folders: snapshot.folders });
   for (const entity of new Set([...local.keys(), ...Object.keys(next.known)])) {
+    await checkpoint();
     const payload = local.get(entity),
       base = next.known[entity],
       fp = payload ? await fingerprint(payload) : "-";
@@ -219,6 +213,7 @@ export async function synchronize({
     await persistState(next);
   }
   // Include changes made by another device during upload. Immutable events avoid lost overwrites.
+  await checkpoint();
   const fresh = await repository.list();
   for (const event of fresh)
     if (!byId.has(event.id)) {
@@ -228,6 +223,7 @@ export async function synchronize({
   const resultNotes = new Map<string, Note>(),
     resultFolders = new Set<string>();
   for (const entity of [...new Set(events.map((e) => e.entity))].sort()) {
+    await checkpoint();
     let current = grouped(entity);
     if (!current.length)
       throw new Error(
@@ -348,6 +344,7 @@ export async function synchronize({
       kind: "folders",
       folders,
     });
+  await checkpoint();
   const current = getLocal();
   if (current.notes !== startNotes || current.folders !== startFolders)
     throw new SyncRetry();
@@ -358,6 +355,7 @@ export async function synchronize({
     (
       await Promise.all(
         notes.map(async (n) => {
+          await checkpoint();
           const old = startNotes.find((o) => o.id === n.id);
           return (
             !old ||
@@ -368,6 +366,7 @@ export async function synchronize({
       )
     ).some(Boolean);
   if (changed) {
+    await checkpoint();
     if (!(await apply({ notes, folders }, next, snapshot)))
       throw new SyncRetry();
   } else await persistState(next);
