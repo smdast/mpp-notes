@@ -21,6 +21,7 @@ import {transferSelection,type SelectionDrag,type IncomingSelection} from "./sel
 import type {PageChange} from "./notebookHistory";
 import type {ShortcutMap} from "./shortcuts";
 import type {SelectionButtonAction} from "./penInput";
+import {readNoteView,captureNoteView,restoreNoteView,saveNoteView,type NoteView} from "./noteView";
 type Props = {
   selectionButton:SelectionButtonAction;
   shortcuts:ShortcutMap;
@@ -143,6 +144,10 @@ function PageSlot({
   );
 }
 export function ContinuousNotebook(props: Props) {
+  const [initialView]=useState(()=>readNoteView(props.note.id));
+  const viewPosition=useRef<NoteView|undefined>(initialView),positionTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const positionReady=useRef(false),positionFailed=useRef(false),writtenPosition=useRef("");
+  const firstJump=useRef(true);
   const ghost=useRef<HTMLCanvasElement>(null),dragging=useRef<{id:string;drag:SelectionDrag;bounds:{left:number;top:number;right:number;bottom:number}}|null>(null);
   const dragFrame=useRef(0),dropTarget=useRef<HTMLElement|null>(null),dragTime=useRef(0);
   const [incoming,setIncoming]=useState<IncomingSelection>();
@@ -162,6 +167,21 @@ export function ContinuousNotebook(props: Props) {
   const scrollPosition=useRef({left:0,top:0}),viewportSize=useRef({width:0,height:0});
   const motion = useRef<ScrollMotion | null>(null),
     velocity = useRef({ x: 0, y: 0, time: 0 });
+  function capturePosition(v=viewport.current){
+    if(!positionReady.current||!v||v.clientWidth<=0||v.clientHeight<=0)return;
+    viewPosition.current=captureNoteView(latest.current.note.pages,liveZoom.current,v.scrollLeft,v.scrollTop,v.clientWidth);
+  }
+  function persistPosition(v?:HTMLDivElement|null){
+    if(v)capturePosition(v);clearTimeout(positionTimer.current);
+    const value=viewPosition.current;if(!value)return;
+    const serialized=JSON.stringify(value);if(serialized===writtenPosition.current)return;
+    if(saveNoteView(latest.current.note.id,value))writtenPosition.current=serialized;
+    else if(!positionFailed.current){positionFailed.current=true;latest.current.onError("表示位置を保存できません。ブラウザーのサイトデータ設定を確認してください。ノート本文の保存とは別の設定です。");}
+  }
+  function rememberPosition(){
+    capturePosition();clearTimeout(positionTimer.current);
+    positionTimer.current=setTimeout(()=>persistPosition(),500);
+  }
   function targetAt(x:number,y:number){
     const v=viewport.current;if(!v)return;
     const vr=v.getBoundingClientRect();if(x<vr.left||x>vr.right||y<vr.top||y>vr.bottom)return;
@@ -229,6 +249,7 @@ export function ContinuousNotebook(props: Props) {
     liveZoom.current=target.zoom;
     v.scrollLeft=target.left;v.scrollTop=target.top;
     scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
+    rememberPosition();
   }
   function finishZoom() {
     flushZoom();pinchAnchor.current=null;
@@ -238,6 +259,23 @@ export function ContinuousNotebook(props: Props) {
     scroll();
   }
   const previousZoom = useRef(zoom);
+  useLayoutEffect(()=>{
+    const v=viewport.current;if(!v)return;
+    const openingZoom=initialView?.zoom??.7;
+    v.style.setProperty("--notebook-zoom",String(openingZoom));
+    liveZoom.current=openingZoom;
+    if(initialView){
+      const restored=restoreNoteView(latest.current.note.pages,initialView,v.clientWidth);
+      v.scrollLeft=restored.left;v.scrollTop=restored.top;latest.current.onActive(restored.pageId);
+    }
+    if(openingZoom!==latest.current.zoom){committedZoom.current=openingZoom;latest.current.setZoom(openingZoom);}
+    else v.style.removeProperty("--notebook-zoom");
+    scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};positionReady.current=true;
+    rememberPosition();
+    // Ancestor layout may already have changed to the library at unmount.
+    // Persist the last editor snapshot rather than measuring that transition.
+    return()=>{persistPosition();positionReady.current=false;};
+  },[]);
   useLayoutEffect(() => {
     const v = viewport.current;
     if (v && previousZoom.current !== zoom) {
@@ -258,7 +296,15 @@ export function ContinuousNotebook(props: Props) {
     }
     previousZoom.current = zoom;
     if(v)viewportSize.current={width:v.clientWidth,height:v.clientHeight};
+    rememberPosition();
   }, [zoom, note.pages]);
+  useEffect(()=>{
+    const leave=()=>persistPosition(viewport.current),visibility=()=>{if(window.document.visibilityState==="hidden")leave();};
+    const beforeAction=()=>capturePosition();
+    window.addEventListener("pagehide",leave);window.document.addEventListener("visibilitychange",visibility);
+    window.addEventListener("pointerdown",beforeAction,true);window.addEventListener("keydown",beforeAction,true);
+    return()=>{window.removeEventListener("pagehide",leave);window.document.removeEventListener("visibilitychange",visibility);window.removeEventListener("pointerdown",beforeAction,true);window.removeEventListener("keydown",beforeAction,true);clearTimeout(positionTimer.current);};
+  },[]);
   useEffect(()=>{
     const v=viewport.current;if(!v)return;
     const observer=new ResizeObserver(()=>{viewportSize.current={width:v.clientWidth,height:v.clientHeight};});
@@ -285,6 +331,7 @@ export function ContinuousNotebook(props: Props) {
     };
   }, [note.id, note.pdf]);
   useEffect(() => {
+    if(firstJump.current){firstJump.current=false;return;}
     const id = requestAnimationFrame(() => {
       const v = viewport.current;
       if (!v) return;
@@ -325,6 +372,7 @@ export function ContinuousNotebook(props: Props) {
   }
   function scroll() {
     if (viewport.current) scrollPosition.current={left:viewport.current.scrollLeft,top:viewport.current.scrollTop};
+    rememberPosition();
     if(pinchAnchor.current)return;
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
@@ -383,6 +431,7 @@ export function ContinuousNotebook(props: Props) {
         before = v.scrollTop;
       v.scrollLeft -= x - prev.x;
       v.scrollTop -= dy;
+      rememberPosition();
       const dt = Math.max(1, e.timeStamp - velocity.current.time);
       velocity.current = {
         x: velocity.current.x * 0.4 + (-(x - prev.x) / dt) * 0.6,

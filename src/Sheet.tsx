@@ -24,7 +24,7 @@ import {
   type EraserMode,
 } from "./editing";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { correctShape } from "./shapes";
+import {EndpointHold,correctHeldShape} from "./shapeHold";
 import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
 import { SelectionPopup } from "./SelectionPopup";
@@ -86,6 +86,7 @@ export function Sheet({
   incomingSelection,
 }: Props) {
   const inputTool=useRef<Tool|null>(null),buttonSelection=useRef(false);
+  const shapeHold=useRef(new EndpointHold());
   const [,refreshButtonSelection]=useState(0);
   function selectionMode(){return tool==="lasso"||buttonSelection.current;}
   function setButtonSelection(value:boolean){if(buttonSelection.current!==value){buttonSelection.current=value;refreshButtonSelection(v=>v+1);}}
@@ -549,7 +550,7 @@ export function Sheet({
         lasso.current = [p];
         refreshSelection((v) => v + 1);
       }
-    } else
+    } else {
       current.current = {
         id: uid(),
         tool: action === "marker" ? "marker" : "pen",
@@ -560,6 +561,8 @@ export function Sheet({
         width: action === "marker" ? width * 5 : width,
         points: [p],
       };
+      shapeHold.current.start(e.clientX,e.clientY,e.timeStamp);
+    }
     schedule();
   }
   function move(e: RPointerEvent<HTMLCanvasElement>) {
@@ -610,7 +613,7 @@ export function Sheet({
         } else if (moving.current)
           onSelectionDrag({phase:"move",strokes:dragStrokes.current,start:moving.current,client:{x:sample.clientX,y:sample.clientY}});
         else {const previous=lasso.current.at(-1);if(!previous||Math.hypot(p.x-previous.x,p.y-previous.y)>=2/zoom)lasso.current.push(p);}
-      } else current.current?.points.push(p);
+      } else if(current.current){current.current.points.push(p);shapeHold.current.move(sample.clientX,sample.clientY,sample.timeStamp,current.current.points.length);}
     }
     if(!moving.current)schedule();
   }
@@ -635,10 +638,11 @@ export function Sheet({
         ? eraseScratch(original.current,current.current.points,zoom) : null;
       working.current = erased || [
         ...working.current,
-        !cancel && shapeCorrection ? correctShape(current.current,page.strokes) : current.current,
+        !cancel && shapeCorrection ? correctHeldShape(current.current,page.strokes,shapeHold.current,e) : current.current,
       ];
     }
     current.current = null;
+    shapeHold.current.reset();
     active.current = null;
     inputTool.current=null;
     if(cancel)working.current=original.current;

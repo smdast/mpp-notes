@@ -88,6 +88,7 @@ import { PWAControls } from "./PWAControls";
 import { clampZoom } from "./scrolling";
 import {shortcutAction} from "./shortcuts";
 import {editableTarget} from "./clipboard";
+import {forgetNoteView} from "./noteView";
 import { PageSidebar } from "./PageSidebar";
 import { reorderPages, duplicatePage, insertedPage } from "./pages";
 import { EditorToolbar } from "./EditorToolbar";
@@ -292,7 +293,7 @@ function App() {
       const found = match && notesRef.current.find((n) => n.id === match[1]);
       if (found) {
         setNoteId(found.id);
-        if(activeRouteNote.current!==found.id)goPage(found.pages[0].id);
+        if(activeRouteNote.current!==found.id){activeRouteNote.current=found.id;goPage(found.pages[0].id);}
         setView("editor");
       } else setView("library");
     };
@@ -441,6 +442,7 @@ function App() {
     if (!notesRef.current.some((existing) => existing.id === n.id))
       notesRef.current = [n, ...notesRef.current];
     setNoteId(n.id);
+    activeRouteNote.current=n.id;
     goPage(n.pages[0].id);
     setView("editor");
     window.location.hash = "/note/" + n.id;
@@ -523,7 +525,7 @@ function App() {
     if (dialog.kind === "deleteNote" && note) {
       const rest = notes.filter((n) => n.id !== note.id);
       setNotes(rest);
-      enqueue(() => deleteNote(note.id));
+      enqueue(async() => {await deleteNote(note.id);forgetNoteView(note.id);});
       if (rest[0]) {
         setNoteId(rest[0].id);
         setPageId(rest[0].pages[0].id);
