@@ -6,6 +6,7 @@ import type {LucideIcon} from "lucide-react";
 import type { Tool } from "./Sheet";
 import type { EraserMode } from "./editing";
 import { penColor } from "./paper";
+import {shortcutTitle} from "./shortcuts";
 import {penIds} from "./preferences";
 import type { Preferences, PenId, PenKind, PenSettings } from "./preferences";
 type Props = {
@@ -40,9 +41,9 @@ export function EditorToolbar(props: Props) {
   const style = settings.dashed ? "dashed" : settings.dotted ? "dotted" : "solid";
   return <div ref={root} className="toolbar editor-toolbar">
     <div className="history-tools" role="group" aria-label="編集操作">
-      <button className="tool" title="元に戻す (Ctrl+Z)" aria-label="元に戻す (Ctrl+Z)" disabled={!props.canUndo} onClick={() => props.onUndo()}><Undo2 size={18}/></button>
-      <button className="tool" title="やり直し (Ctrl+Shift+Z)" aria-label="やり直し (Ctrl+Shift+Z)" disabled={!props.canRedo} onClick={() => props.onUndo(true)}><Redo2 size={18}/></button>
-      <button className="tool" title="貼り付け (Ctrl+V)" aria-label="貼り付け" onClick={() => window.dispatchEvent(new Event("mpp-paste"))}><ClipboardPaste size={18}/></button>
+      <button className="tool" title={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} aria-label={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} disabled={!props.canUndo} onClick={() => props.onUndo()}><Undo2 size={18}/></button>
+      <button className="tool" title={shortcutTitle("やり直し",preferences.shortcuts,"redo")} aria-label={shortcutTitle("やり直し",preferences.shortcuts,"redo")} disabled={!props.canRedo} onClick={() => props.onUndo(true)}><Redo2 size={18}/></button>
+      <button className="tool" title={shortcutTitle("貼り付け",preferences.shortcuts,"paste")} aria-label="貼り付け" onClick={() => window.dispatchEvent(new Event("mpp-paste"))}><ClipboardPaste size={18}/></button>
     </div>
     <div className="toolbar-content">
       <div className="tool-picker">
@@ -60,7 +61,7 @@ export function EditorToolbar(props: Props) {
           <button className="tool add-pen" aria-label={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} title={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} onClick={()=>{pendingNew.current=props.onAddPen(kind);setOpen(false);}}><Plus size={17}/></button>
         </div>)}
         <div className="tool-group">
-          {([{id:"eraser",label:"消しゴム (E)",Icon:Eraser},{id:"lasso",label:"なげなわ選択 (L)",Icon:Lasso},{id:"hand",label:"移動 (V)",Icon:Hand}] as const).map(({id,label,Icon}) =>
+          {([{id:"eraser",label:shortcutTitle("消しゴム",preferences.shortcuts,"eraser"),Icon:Eraser},{id:"lasso",label:shortcutTitle("なげなわ選択",preferences.shortcuts,"lasso"),Icon:Lasso},{id:"hand",label:shortcutTitle("移動",preferences.shortcuts,"hand"),Icon:Hand}] as const).map(({id,label,Icon}) =>
             <button key={id} className={"tool " + (tool === id ? "active" : "")} aria-label={label} aria-pressed={tool === id} title={label} aria-expanded={id === "eraser" ? tool === id && open : undefined} aria-controls={id === "eraser" ? "tool-settings" : undefined} onClick={e => {anchor.current=e.currentTarget;if(id === "eraser" && tool === id)setOpen(v=>!v);else{setOpen(false);props.onTool(id);}}}><Icon size={19}/></button>)}
         </div>
       </div>

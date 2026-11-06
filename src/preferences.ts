@@ -1,3 +1,5 @@
+import {defaultShortcuts,readShortcuts,type ShortcutMap} from "./shortcuts";
+import type {SelectionButtonAction} from "./penInput";
 export type BuiltinPenId = "pen1" | "pen2" | "pen3" | "marker";
 export type PenId = BuiltinPenId | `custom-${string}`;
 export type PenKind = "pen" | "marker";
@@ -13,6 +15,8 @@ export type PenSettings = {
   customColor?: boolean;
 };
 export type Preferences = {
+  selectionButton:SelectionButtonAction;
+  shortcuts:ShortcutMap;
   deletedPens?: BuiltinPenId[];
   scratchErase: boolean;
   pagesCollapsed:boolean;
@@ -26,6 +30,7 @@ export type Preferences = {
   activePen: PenId;
 };
 export const defaultPreferences = (): Preferences => ({
+  selectionButton:"lasso",shortcuts:defaultShortcuts(),
   eraserMode: "stroke", scratchErase: false, pagesCollapsed:false,
   theme: "system", accent: "green", paperColor: "auto", paperPattern: "grid",
   pens: {
@@ -40,6 +45,8 @@ export function readPreferences(value: unknown): Preferences {
   const base = defaultPreferences();
   if (!value || typeof value !== "object") return base;
   const v = value as Partial<Preferences> & {shapeCorrection?:boolean};
+  if(v.selectionButton==="eraser"||v.selectionButton==="lasso")base.selectionButton=v.selectionButton;
+  base.shortcuts=readShortcuts(v.shortcuts);
   const legacyCorrection=typeof v.shapeCorrection === "boolean"?v.shapeCorrection:true;
   for(const p of Object.values(base.pens))p.shapeCorrection=legacyCorrection;
   if(typeof v.pagesCollapsed === "boolean")base.pagesCollapsed=v.pagesCollapsed;

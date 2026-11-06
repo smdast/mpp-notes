@@ -8,7 +8,8 @@ import type {PDFDocumentProxy} from "pdfjs-dist";
 import {PageTemplateDialog} from "./PageTemplateDialog";
 import {ScrollMotion} from "./motion";
 import {PAGE_HOLD_MS,PAGE_HOLD_SLOP,pageGridSlot,pageDropTarget} from "./pageDrag";
-type Props={pdf?:Uint8Array;collapsed:boolean;onCollapse:(collapsed:boolean)=>void;pages:Page[];active:string;dark:boolean;onSelect:(id:string)=>void;onAdd:()=>void;onInsert:(id:string,after:boolean)=>void;onDuplicate:(id:string)=>void;onDelete:(id:string)=>void;onReorder:(from:string,to:string,after:boolean)=>void;onTemplate:(id:string,patch:Partial<Page>)=>void;onApply:(id:string)=>void;onError:(s:string)=>void};
+import {shortcutAction,shortcutHint,type ShortcutMap} from "./shortcuts";
+type Props={shortcuts:ShortcutMap;pdf?:Uint8Array;collapsed:boolean;onCollapse:(collapsed:boolean)=>void;pages:Page[];active:string;dark:boolean;onSelect:(id:string)=>void;onAdd:()=>void;onInsert:(id:string,after:boolean)=>void;onDuplicate:(id:string)=>void;onDelete:(id:string)=>void;onReorder:(from:string,to:string,after:boolean)=>void;onTemplate:(id:string,patch:Partial<Page>)=>void;onApply:(id:string)=>void;onError:(s:string)=>void};
 type Drag={id:string;slot:number;src:string;width:number;height:number};
 type Gesture={id:string;pointer:number;type:string;x:number;y:number;startX:number;startY:number;lastY:number;time:number;velocity:number;started:boolean;scrolling:boolean;offsetX:number;offsetY:number;width:number;height:number;slot:number;src:string};
 export function PageSidebar(props:Props){
@@ -105,9 +106,9 @@ export function PageSidebar(props:Props){
   if(!p)return <div key="drop-slot" className="page-drop-cell" aria-label="移動先"><span className="page-drop-slot" aria-hidden="true"/></div>;
   const i=props.pages.indexOf(p);
   return <div key={p.id} data-side-page={p.id} className="page-item">
-  <button className={"page-thumb "+(props.active===p.id?"current":"")} aria-label={`ページ ${i+1}`} aria-current={props.active===p.id?"page":undefined} title="長押しで並び替え・Alt＋矢印キーで移動" onClick={e=>{if(e.detail===0)props.onSelect(p.id);}} onPointerDown={e=>down(e,p.id)} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{
-   if(!e.altKey)return;const delta=e.key==="ArrowLeft"?-1:e.key==="ArrowRight"?1:e.key==="ArrowUp"?-2:e.key==="ArrowDown"?2:0,target=props.pages[i+delta];
-   if(delta&&target){e.preventDefault();props.onReorder(p.id,target.id,delta>0);}
+  <button className={"page-thumb "+(props.active===p.id?"current":"")} aria-label={`ページ ${i+1}`} aria-current={props.active===p.id?"page":undefined} title={`長押しで並び替え${shortcutHint(props.shortcuts,"pageLeft")?"・"+shortcutHint(props.shortcuts,"pageLeft")+" などで移動":""}`} onClick={e=>{if(e.detail===0)props.onSelect(p.id);}} onPointerDown={e=>down(e,p.id)} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{
+   const action=shortcutAction(props.shortcuts,e.nativeEvent),delta=action==="pageLeft"?-1:action==="pageRight"?1:action==="pageUp"?-2:action==="pageDown"?2:0,target=props.pages[i+delta];
+   if(delta){e.preventDefault();e.stopPropagation();if(target)props.onReorder(p.id,target.id,delta>0);}
   }}>
   {!props.collapsed&&<PagePreview page={p} dark={props.dark} pdfDocument={pdfDocument} number={i+1}/>}<small>{i+1}</small></button>
   <button className="page-more" aria-label={`ページ ${i+1} のメニュー`} aria-expanded={menu?.id===p.id} onClick={e=>open(e,p.id)}><MoreVertical size={16}/></button>

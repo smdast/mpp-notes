@@ -19,7 +19,11 @@ import {drawStroke} from "./draw";
 import {createPortal} from "react-dom";
 import {transferSelection,type SelectionDrag,type IncomingSelection} from "./selectionTransfer";
 import type {PageChange} from "./notebookHistory";
+import type {ShortcutMap} from "./shortcuts";
+import type {SelectionButtonAction} from "./penInput";
 type Props = {
+  selectionButton:SelectionButtonAction;
+  shortcuts:ShortcutMap;
   note: Note;
   onPasted: () => void;
   dark: boolean;
@@ -96,6 +100,8 @@ function PageSlot({
       </div>
       {visible || pinned ? (
         <Sheet
+          selectionButton={props.selectionButton}
+          shortcuts={props.shortcuts}
           page={page}
           onPasted={props.onPasted}
           paperColor={pagePaperColor(page, props.dark)}

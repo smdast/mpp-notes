@@ -86,6 +86,8 @@ import { SettingsPage } from "./SettingsPage";
 import { imageStroke } from "./images";
 import { PWAControls } from "./PWAControls";
 import { clampZoom } from "./scrolling";
+import {shortcutAction} from "./shortcuts";
+import {editableTarget} from "./clipboard";
 import { PageSidebar } from "./PageSidebar";
 import { reorderPages, duplicatePage, insertedPage } from "./pages";
 import { EditorToolbar } from "./EditorToolbar";
@@ -420,37 +422,20 @@ function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLSelectElement ||
+        e.defaultPrevented || e.isComposing || editableTarget(e.target) || view!=="editor" || blocked ||
         dialog || settingsOpen || document.querySelector(".page-context-menu,.page-template-dialog") ||
         busy || writing.current || conflictPendingRef.current
       )
         return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        undo(e.shiftKey);
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        undo(true);
-      } else if (!e.ctrlKey && !e.metaKey) {
-        const t: Record<string, Tool> = {
-          p: "pen",
-          h: "marker",
-          e: "eraser",
-          l: "lasso",
-          v: "hand",
-        };
-        if (["p","h"].includes(e.key.toLowerCase())) {
-          const pref=preferencesRef.current,kind=e.key.toLowerCase()==="h"?"marker":"pen";
-          const id=penKind(pref.activePen,pref.pens[pref.activePen])===kind?pref.activePen:penIds(pref,kind)[0];
-          if(id)choosePen(id);
-        }
-        else if (t[e.key.toLowerCase()]) setTool(t[e.key.toLowerCase()]);
-      }
+      const pref=preferencesRef.current,action=shortcutAction(pref.shortcuts,e);
+      if(action==="undo"||action==="redo"){e.preventDefault();undo(action==="redo");}
+      else if(action==="pen"||action==="marker"){
+        e.preventDefault();const id=penKind(pref.activePen,pref.pens[pref.activePen])===action?pref.activePen:penIds(pref,action)[0];if(id)choosePen(id);
+      }else if(action==="eraser"||action==="lasso"||action==="hand"){e.preventDefault();setTool(action);}
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [page, dialog, busy, historyRevision, settingsOpen]);
+  }, [page, dialog, busy, historyRevision, settingsOpen,view,blocked]);
   function select(n: Note) {
     // Async imports can navigate before React commits their new note list.
     if (!notesRef.current.some((existing) => existing.id === n.id))
@@ -764,7 +749,7 @@ function App() {
             )}
             {ready && page && note ? (
               <div className="workspace">
-                <PageSidebar key={note.id} pdf={note.pdf} collapsed={preferences.pagesCollapsed} onCollapse={pagesCollapsed=>storePreferences({...preferencesRef.current,pagesCollapsed})} pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
+                <PageSidebar shortcuts={preferences.shortcuts} key={note.id} pdf={note.pdf} collapsed={preferences.pagesCollapsed} onCollapse={pagesCollapsed=>storePreferences({...preferencesRef.current,pagesCollapsed})} pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
                   onInsert={(id,after)=>{const result=insertedPage(note.pages,id,after,dark);if(result){updateNote({...note,pages:result.pages});goPage(result.page.id);}}}
                   onDuplicate={(id)=>{const source=note.pages.find(p=>p.id===id);if(!source)return;const copy=duplicatePage(source),index=note.pages.indexOf(source)+1;updateNote({...note,pages:[...note.pages.slice(0,index),copy,...note.pages.slice(index)]});goPage(copy.id);}}
                   onDelete={(id)=>setDialog({kind:"deletePage",pageId:id})}
@@ -774,6 +759,8 @@ function App() {
                   onError={setError}/>
                 <section className="desk">
                   <ContinuousNotebook
+                    selectionButton={preferences.selectionButton}
+                    shortcuts={preferences.shortcuts}
                     dark={dark}
                     activePageId={page.id}
                     onPasted={() => setTool("lasso")}

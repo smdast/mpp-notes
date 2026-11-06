@@ -3060,3 +3060,24 @@ main {
 .conflict-dialog footer {display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap;}
 .conflict-dialog footer button {padding:10px 16px;border:1px solid var(--t-accent,#9aac90);border-radius:7px;}
 @media(max-width:600px){.conflict-dialog{padding:18px;}.conflict-variants{grid-template-columns:1fr;}.conflict-preview{height:135px;}.conflict-dialog footer{position:sticky;bottom:-18px;background:var(--t-panel,#fffefa);padding:12px 0;margin-top:6px;}}
+
+.operation-settings h2 {display:flex;align-items:center;gap:10px;}
+.operation-settings .operation-note {font-size:12px;line-height:1.9;opacity:.8;}
+.pen-button-options {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:480px;margin:20px 0;}
+.pen-button-options button {display:flex;align-items:center;justify-content:center;gap:12px;padding:20px 12px;border:1px solid var(--t-accent,#9aac90);border-radius:10px;}
+.pen-button-options button[aria-pressed="true"] {background:var(--t-selected,#e4ecdf);box-shadow:inset 0 0 0 1px var(--t-accent,#718d66);}
+.shortcut-list {margin:22px 0;}
+.shortcut-row {display:grid;grid-template-columns:minmax(160px,1fr) minmax(0,1.4fr);gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid color-mix(in srgb,var(--t-accent,#9aac90) 35%,transparent);}
+.shortcut-row>label {font-size:13px;}
+.shortcut-bindings {display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.shortcut-binding {display:inline-flex;align-items:stretch;border:1px solid var(--t-accent,#9aac90);border-radius:6px;overflow:hidden;}
+.shortcut-binding button {padding:8px 10px;font-size:12px;}
+.shortcut-binding button+button {padding:8px 6px;border-left:1px solid color-mix(in srgb,var(--t-accent,#9aac90) 40%,transparent);}
+.shortcut-binding .recording {background:var(--t-selected,#e4ecdf);}
+.shortcut-add,.shortcut-reset {display:inline-flex;align-items:center;gap:6px;padding:9px 10px;font-size:12px;border:1px dashed var(--t-accent,#9aac90);border-radius:6px;}
+.shortcut-message {font-size:12px;min-height:20px;position:sticky;top:0;z-index:2;background:var(--t-panel,#fffefa);padding:8px 0;}
+[data-accent="green"] .operation-settings {--t-panel:#fffefa;--t-text:#345d48;--t-accent:#718d66;--t-selected:#e4ecdf;}
+[data-theme="dark"][data-accent="green"] .operation-settings {--t-panel:#213426;--t-text:#d2e5c1;--t-accent:#a5b69a;--t-selected:#3e5d3e;}
+@media(max-width:600px){.shortcut-row{grid-template-columns:1fr;gap:10px;}.pen-button-options button{flex-direction:column;gap:8px;}}
+
+.shortcut-message:empty {display:none;}

@@ -1,4 +1,6 @@
 import {scratchErase as eraseScratch} from "./scratch";
+import {penButtonTool,penInContact,type SelectionButtonAction} from "./penInput";
+import {defaultShortcuts,shortcutAction,nativeClipboardAction,type ShortcutMap} from "./shortcuts";
 import {
   useEffect,
   useRef,
@@ -32,6 +34,8 @@ import {StrokeIndex,strokeBounds,unionBounds,type Bounds} from "./spatial";
 import type {SelectionDrag,IncomingSelection} from "./selectionTransfer";
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
+  selectionButton?:SelectionButtonAction;
+  shortcuts?:ShortcutMap;
   page: Page;
   onPasted: () => void;
   paperColor: string;
@@ -56,6 +60,8 @@ type Props = {
   incomingSelection?:IncomingSelection;
 };
 export function Sheet({
+  selectionButton="lasso",
+  shortcuts=defaultShortcuts(),
   page,
   onPasted,
   paperColor,
@@ -79,6 +85,10 @@ export function Sheet({
   onSelectionDrag,
   incomingSelection,
 }: Props) {
+  const inputTool=useRef<Tool|null>(null),buttonSelection=useRef(false);
+  const [,refreshButtonSelection]=useState(0);
+  function selectionMode(){return tool==="lasso"||buttonSelection.current;}
+  function setButtonSelection(value:boolean){if(buttonSelection.current!==value){buttonSelection.current=value;refreshButtonSelection(v=>v+1);}}
   const spatial=useRef<StrokeIndex|null>(null),dirty=useRef<Bounds|null>(null);
   const dragStrokes=useRef<Stroke[]>([]);
   const backing=useRef<{canvas:HTMLCanvasElement;source:Stroke[];omit:boolean}|null>(null);
@@ -176,7 +186,7 @@ export function Sheet({
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      onError(cut ? "クリップボードへ書き込めないため切り取りませんでした。Ctrl+Xをお試しください。" : "アプリ内にコピーしました。ほかのアプリへのコピーにはクリップボードの許可が必要です。");
+      onError(cut ? "クリップボードへ書き込めないため切り取りませんでした。ブラウザーのクリップボード権限を確認してください。" : "アプリ内にコピーしました。ほかのアプリへのコピーにはクリップボードの許可が必要です。");
       if (cut) return;
     }
     if (cut && alive.current && live.current.isActive && active.current === null) {
@@ -223,12 +233,12 @@ export function Sheet({
     } catch {
       const strokes = localStrokes();
       if (strokes) await pasteContent(strokes);
-      else onError("貼り付けの許可を確認するか、Ctrl+Vで貼り付けてください。");
+      else onError("貼り付けの許可を確認してから、もう一度お試しください。");
     }
   }
   useEffect(() => {
     const copy = (e: ClipboardEvent) => {
-      if (!canPaste(e.target) || tool !== "lasso" || !selected.current.size || !e.clipboardData) return;
+      if (!canPaste(e.target) || !selectionMode() || !selected.current.size || !e.clipboardData) return;
       e.clipboardData.setData("text/plain", rememberStrokes(selectedStrokes()));
       e.preventDefault();
       if (e.type === "cut") removeSelection();
@@ -254,24 +264,41 @@ export function Sheet({
   useEffect(() => {
     if (!isActive) clearSelection();
   }, [isActive]);
+  useEffect(()=>{setButtonSelection(false);},[tool]);
   useEffect(()=>{
     if(incomingSelection?.pageId!==page.id)return;
     selected.current=new Set(incomingSelection.ids);setPopupOpen(true);refreshSelection(v=>v+1);schedule();
   },[incomingSelection?.token,page.id]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if(e.defaultPrevented||!isActive||editableTarget(e.target)||document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu'))return;
+      const action=shortcutAction(shortcuts,e),native=nativeClipboardAction(e);
+      if(native&&!action){e.preventDefault();return;}
+      if(action==="paste"){
+        if(action===native)return;
+        e.preventDefault();if(!e.repeat)void pasteFromButton();return;
+      }
       if (
         !isActive ||
-        tool !== "lasso" ||
+        !selectionMode() ||
         !selected.current.size ||
         editableTarget(e.target) ||
         document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu')
       )
         return;
-      if (e.key === "Delete" || e.key === "Backspace") {
+      if (action==="copy"||action==="cut") {
+        if(active.current!==null)return;
+        if(action===native)return;
+        e.preventDefault();if(!e.repeat)void copySelection(action==="cut");
+      } else if(action==="duplicate"||action==="rotate"){
+        if(active.current!==null)return;e.preventDefault();
+        if(action==="duplicate")insert(selectedStrokes());else applyTransform(1,1,Math.PI/2);
+      } else if (action === "deleteSelection") {
+        if(active.current!==null)return;
         e.preventDefault();
         removeSelection();
-      } else if (e.key === "Escape") {
+      } else if (action === "clearSelection") {
+        e.preventDefault();
         const pointer=active.current;
         if(pointer!==null){
           if(moving.current)onSelectionDrag({phase:"cancel",strokes:dragStrokes.current,start:moving.current,client:{x:0,y:0}});
@@ -284,7 +311,7 @@ export function Sheet({
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [isActive, tool, page.strokes]);
+  }, [isActive, tool, page.strokes,shortcuts]);
   const [dpr, setDpr] = useState(window.devicePixelRatio || 1);
   useEffect(() => {
     const resize = () => setDpr(window.devicePixelRatio || 1);
@@ -320,7 +347,7 @@ export function Sheet({
       if(transform.current)for(const s of working.current)if(selected.current.has(s.id))drawStroke(ctx,s);
     }else working.current.forEach((s) => drawStroke(ctx, s));
     if (current.current) drawStroke(ctx, current.current);
-    if (tool === "lasso") {
+    if (selectionMode()) {
       ctx.save();
       ctx.strokeStyle = isDarkColor(paperColor) ? "#acd49a" : "#397956";
       ctx.lineWidth = 1.3 / zoom;
@@ -469,16 +496,23 @@ export function Sheet({
     );
   }
   function down(e: RPointerEvent<HTMLCanvasElement>) {
+    const buttonTool=penButtonTool(e,selectionButton);
+    if(e.pointerType==="pen"&&!penInContact(e)){if(buttonTool){e.preventDefault();e.stopPropagation();}return;}
+    if(e.pointerType==="mouse"&&e.button!==0)return;
+    const action=buttonTool||(e.pointerType==="touch"&&buttonSelection.current?"lasso":tool);
     const p = point(e);
-    const hit = tool === "lasso" ? selectionHit(selectionBounds(page.strokes, selected.current), p, zoom) : null;
-    const image = tool === "lasso" && !hit ? imageAtPoint(page.strokes, p) : undefined;
+    const hit = action === "lasso" ? selectionHit(selectionBounds(page.strokes, selected.current), p, zoom) : null;
+    const image = action === "lasso" && !hit ? imageAtPoint(page.strokes, p) : undefined;
     if (
       (e.pointerType === "touch" && !hit && !image) ||
-      tool === "hand" ||
+      action === "hand" ||
       e.button === 1
     )
       return;
     if (active.current !== null) return;
+    inputTool.current=action;
+    if(buttonTool==="lasso")setButtonSelection(true);
+    else if(e.pointerType!=="touch"&&buttonSelection.current){setButtonSelection(false);clearSelection();}
     e.preventDefault();
     e.stopPropagation();
     onActivate();
@@ -488,13 +522,12 @@ export function Sheet({
     working.current = page.strokes;
     original.current = page.strokes;
     discardBacking();dirty.current=null;
-    erasing.current =
-      tool === "eraser" || (e.buttons & 32) !== 0 || (e.buttons & 2) !== 0;
-    spatial.current=erasing.current||tool==="lasso"?new StrokeIndex(page.strokes):null;
+    erasing.current = action === "eraser";
+    spatial.current=erasing.current||action==="lasso"?new StrokeIndex(page.strokes):null;
     last.current = p;
     setPopupOpen(true);
     if (erasing.current) {selected.current.clear();paint(true);applyEraser(p, p);}
-    else if (tool === "lasso") {
+    else if (action === "lasso") {
       if (hit?.kind === "rotate") {
         transform.current = {kind:"rotate",start:p,cx:hit.cx,cy:hit.cy};
         setEditingSelection(true);
@@ -518,21 +551,22 @@ export function Sheet({
     } else
       current.current = {
         id: uid(),
-        tool: tool === "marker" ? "marker" : "pen",
+        tool: action === "marker" ? "marker" : "pen",
         color,
         pressure,
         dotted,
         dashed,
-        width: tool === "marker" ? width * 5 : width,
+        width: action === "marker" ? width * 5 : width,
         points: [p],
       };
     schedule();
   }
   function move(e: RPointerEvent<HTMLCanvasElement>) {
+    if(active.current===null&&penInContact(e)&&penButtonTool(e,selectionButton))down(e);
     if (cursor.current) {
       const show =
         e.pointerType !== "touch" &&
-        (tool === "eraser" || (active.current !== null && erasing.current));
+        (tool === "eraser" || penButtonTool(e,selectionButton)==="eraser" || (active.current !== null && erasing.current));
       cursor.current.style.display = show ? "block" : "none";
       if (show) {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -541,17 +575,18 @@ export function Sheet({
     }
 
     if (active.current !== e.pointerId) return;
+    if(e.pointerType==="pen"&&!penInContact(e)){finish(e);return;}
     e.preventDefault();
     e.stopPropagation();
     const samples = e.nativeEvent.getCoalescedEvents?.() || [];
     const rect=ink.current!.getBoundingClientRect();
     const events=samples.length?samples:[e.nativeEvent];
-    for (const sample of tool==="lasso"&&(moving.current||transform.current)?events.slice(-1):events) {
+    for (const sample of inputTool.current==="lasso"&&(moving.current||transform.current)?events.slice(-1):events) {
       const p = point(sample,rect);
       if (erasing.current) {
         applyEraser(last.current || p, p);
         last.current = p;
-      } else if (tool === "lasso") {
+      } else if (inputTool.current === "lasso") {
         if (transform.current) {
           const t = transform.current;
           if (t.kind === "rotate") {
@@ -583,7 +618,7 @@ export function Sheet({
     e.stopPropagation();
     const cancel =
       e.type === "pointercancel" || e.type === "lostpointercapture";
-    if (tool === "lasso" && !erasing.current) {
+    if (inputTool.current === "lasso" && !erasing.current) {
       if(moving.current){const target=onSelectionDrag({phase:cancel?"cancel":"end",strokes:dragStrokes.current,start:moving.current,client:{x:e.clientX,y:e.clientY}});if(target&&target!==page.id)selected.current.clear();}
       if (cancel) working.current = original.current;
       else if (!moving.current && !transform.current)
@@ -595,7 +630,7 @@ export function Sheet({
       lasso.current = [];
     }
     if (current.current) {
-      const erased=!cancel && tool === "pen" && scratchErase
+      const erased=!cancel && inputTool.current === "pen" && scratchErase
         ? eraseScratch(original.current,current.current.points,zoom) : null;
       working.current = erased || [
         ...working.current,
@@ -604,6 +639,7 @@ export function Sheet({
     }
     current.current = null;
     active.current = null;
+    inputTool.current=null;
     if(cancel)working.current=original.current;
     erasing.current=false;dirty.current=null;spatial.current=null;discardBacking();
     last.current = null;
@@ -651,7 +687,7 @@ export function Sheet({
         style={{ width: eraserSize, height: eraserSize, display: "none" }}
       />
       {pdfLoading && <div className="page-loading">PDFを読み込み中…</div>}
-      {isActive && tool === "lasso" && bounds && popupOpen && !editingSelection && (
+      {isActive && selectionMode() && bounds && popupOpen && !editingSelection && (
         <SelectionPopup onDismiss={()=>setPopupOpen(false)} canvas={ink} bounds={bounds} zoom={zoom}
           onCopy={() => void copySelection()}
           onCut={() => void copySelection(true)}

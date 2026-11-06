@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, type ReactNode } from "react";
-import { Palette, Cloud, Archive, Info, CircleHelp, ArrowLeft } from "lucide-react";
+import { Palette, Cloud, Archive, Info, CircleHelp, ArrowLeft,SlidersHorizontal } from "lucide-react";
+import {OperationSettings} from "./OperationSettings";
 import packageInfo from "../package.json";
 import type { Preferences } from "./preferences";
 import { isDarkColor } from "./paper";
@@ -9,7 +10,7 @@ export function SettingsPage({value,onChange,onClose,sync,backup,restore,help,pw
  useEffect(()=>{const title=document.title;document.title="設定 | MPP Notes";return()=>{document.title=title;};},[]);
  const latest=useRef(value);latest.current=value;
  const update=(patch:Partial<Preferences>)=>onChange({...latest.current,...patch});
- const tabs=[{id:"theme",label:"テーマ",Icon:Palette},{id:"sync",label:"同期",Icon:Cloud},{id:"backup",label:"バックアップと復元",Icon:Archive},{id:"about",label:"このアプリについて",Icon:Info},{id:"help",label:"ヘルプ",Icon:CircleHelp}];
+ const tabs=[{id:"theme",label:"テーマ",Icon:Palette},{id:"controls",label:"操作設定",Icon:SlidersHorizontal},{id:"sync",label:"同期",Icon:Cloud},{id:"backup",label:"バックアップと復元",Icon:Archive},{id:"about",label:"このアプリについて",Icon:Info},{id:"help",label:"ヘルプ",Icon:CircleHelp}];
  const readTab=()=>{const raw=new URLSearchParams(location.search).get("tab"),id=raw==="drive"?"sync":raw;return tabs.some(t=>t.id===id)?id!:"theme";};
  const [tab,setTab]=useState(readTab);
  useEffect(()=>{const change=()=>setTab(readTab());window.addEventListener("popstate",change);return()=>window.removeEventListener("popstate",change);},[]);
@@ -28,7 +29,7 @@ export function SettingsPage({value,onChange,onClose,sync,backup,restore,help,pw
  <label className="settings-upload">背景画像を選択<input aria-label="既定の背景画像" type="file" accept="image/*" onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)void imageStroke(f,{width:794,height:1123}).then(s=>update({paperImage:s.image})).catch(e=>onError(e.message));}}/></label>{value.paperImage&&<button onClick={()=>update({paperImage:undefined})}>背景画像を解除</button>}
  </div></div>
  {onApply&&<button className="primary" onClick={onApply}>開いているノートの全ページに適用</button>}
- </>}{tab==="sync"&&<>{sync}</>}
+ </>}{tab==="controls"&&<OperationSettings value={value} onChange={onChange}/>} {tab==="sync"&&<>{sync}</>}
  {tab==="backup"&&<><h2>バックアップと復元</h2>
 <p>大切なノートはZIPでも保存してください。復元したノートは追加されます。</p><div className="settings-actions"><button disabled={!ready} onClick={backup}>バックアップを書き出す</button><button disabled={!ready} onClick={restore}>バックアップを復元する</button></div>
  </>}{tab==="about"&&<><h2>このアプリについて</h2><img src="./icon.svg" width="64" height="64" alt=""/><h3>MPP Notes</h3><p>バージョン {packageInfo.version}</p><p>手書きとPDFのためのノートアプリ</p><div className="settings-actions"><a href="./privacy.html" target="_blank" rel="noreferrer">プライバシーポリシー</a><a href="./terms.html" target="_blank" rel="noreferrer">利用規約</a><a href="https://github.com/smdast/mpp-notes" target="_blank" rel="noreferrer">ソースコード</a></div>{pwa}<details className="release-details"><summary>更新履歴を見る</summary><ReleaseHistory/></details></>}
