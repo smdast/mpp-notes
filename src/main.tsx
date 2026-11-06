@@ -5,6 +5,10 @@ import {SyncPanel,type SyncMethod} from "./SyncPanel";
 import {useFolderSync} from "./folderSync/useFolderSync";
 import {SyncActivity} from "./syncScheduling";
 import {cancelSyncWork} from "./syncWork";
+import {ShareMenu} from "./ShareMenu";
+import {makeNoteFile,readNoteFile,noteFilename,NOTE_MIME,NOTE_EXTENSION} from "./noteFile";
+import {ConflictDialog} from "./ConflictDialog";
+import type {NoteConflict,ConflictChoice} from "./drive/conflicts";
 import type { SyncState, LibrarySnapshot } from "./drive/sync";
 import { createRoot } from "react-dom/client";
 import { useEffect, useRef, useState } from "react";
@@ -138,6 +142,7 @@ function App() {
     writing = useRef(false),
     pdfInput = useRef<HTMLInputElement>(null),
     backupInput = useRef<HTMLInputElement>(null);
+  const noteInput=useRef<HTMLInputElement>(null);
   const note = notes.find((n) => n.id === noteId),
     page = note?.pages.find((p) => p.id === pageId) || note?.pages[0],
     pageIndex = note && page ? note.pages.indexOf(page) : 0;
@@ -156,6 +161,8 @@ function App() {
   const foldersRef = useRef(folders);
   foldersRef.current = folders;
   const [syncMethod,setSyncMethod]=useState<SyncMethod>("google");
+  const [conflictPending,setConflictPending]=useState<{conflict:NoteConflict;method:SyncMethod}|null>(null);
+  const conflictPendingRef=useRef<typeof conflictPending>(null),conflictChoices=useRef(new Map<string,ConflictChoice>());
   const syncActivity=useRef(new SyncActivity());
   useEffect(()=>{
     const record=(event:Event)=>{
@@ -174,13 +181,23 @@ function App() {
     isIdle:()=>syncActivity.current.isIdle(),
     activityVersion:()=>syncActivity.current.version,
     canSync: () =>
-      pending.current === 0 && !failed.current && !writing.current && !busy,
+      pending.current === 0 && !failed.current && !writing.current && !busy && !conflictPendingRef.current,
+    resolveConflict:(conflict:NoteConflict)=>conflictChoices.current.get(conflict.key),
+    onConflict:(conflict:NoteConflict)=>{const request={conflict,method:syncMethod};conflictPendingRef.current=request;setConflictPending(request);},
     apply: applyIncoming,
   };
   const drive = useDriveSync({...syncProps,enabled:ready&&syncMethod==="google"});
   const folderSync = useFolderSync({...syncProps,enabled:ready&&syncMethod==="folder"});
   syncSaving.current=drive.working||folderSync.working;
   function changeSyncMethod(method:SyncMethod){setSyncMethod(method);enqueue(()=>saveSetting("sync-method",method));}
+  function chooseConflict(choice:ConflictChoice){
+    const request=conflictPendingRef.current;if(!request)return;
+    conflictChoices.current.set(request.conflict.key,choice);
+    if(conflictChoices.current.size>50)conflictChoices.current.delete(conflictChoices.current.keys().next().value!);
+    conflictPendingRef.current=null;setConflictPending(null);
+    queueMicrotask(()=>request.method==="google"?drive.sync():folderSync.sync());
+  }
+  function deferConflict(){conflictPendingRef.current=null;setConflictPending(null);}
   async function applyIncoming(
     next: LibrarySnapshot,
     state: SyncState,
@@ -406,7 +423,7 @@ function App() {
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
         dialog || settingsOpen || document.querySelector(".page-context-menu,.page-template-dialog") ||
-        busy || writing.current
+        busy || writing.current || conflictPendingRef.current
       )
         return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -499,6 +516,19 @@ function App() {
       if (restored[0]) select(restored[0]);
     });
   }
+  async function importNotebook(file:File){
+    await run("ノートを取り込み中",async()=>{
+      if(file.size>250*1024*1024)throw new Error("ノートファイルのサイズ上限（250 MB）を超えています。");
+      const imported=readNoteFile(new Uint8Array(await file.arrayBuffer()));
+      if(imported.pdf){const verified=await importPDF(imported.pdf,imported.title);if(imported.pages.some(p=>p.pdfIndex!==undefined&&p.pdfIndex>=verified.pages.length))throw new Error("ノートファイルのPDFページ情報が無効です。");}
+      const next={...imported,folder:folder==="*"?imported.folder:folder||undefined};
+      const merged=normalizeFolders([...foldersRef.current,...(next.folder?[next.folder]:[])]);
+      await queue.current;await saveMany([next],merged);
+      notesRef.current=[next,...notesRef.current];setNotes(notesRef.current);setFolders(merged);select(next);
+    });
+  }
+  function exportNotebook(){if(note&&!writing.current)void run("ノートを書き出し中",async()=>download(makeNoteFile(note),noteFilename(note.title),NOTE_MIME));}
+  function exportPdfNote(){if(note&&!writing.current)void run("PDFを書き出し中",async()=>download(await exportPDF({...note,pages:note.pages.map(p=>({...p,paperColor:pagePaperColor(p,dark)}))}),noteFilename(note.title,".pdf"),"application/pdf"));}
   function submitDialog() {
     if (!dialog) return;
     const title = dialog.value?.trim();
@@ -621,6 +651,7 @@ function App() {
             onMove={(n, f) => updateNote({ ...n, folder: f || undefined })}
             onNew={() => setDialog({ kind: "new", value: "" })}
             onImport={() => pdfInput.current?.click()}
+            onImportNote={()=>noteInput.current?.click()}
             error={error}
             onDismiss={() => setError("")}
             onRetry={retrySave}
@@ -713,29 +744,7 @@ function App() {
                   )}{" "}
                   {saveStatus}
                 </span>
-                <button
-                  className="export-button"
-                  disabled={!note || !!busy}
-                  onClick={() =>
-                    note &&
-                    void run("PDFを書き出し中", async () =>
-                      download(
-                        await exportPDF({
-                          ...note,
-                          pages: note.pages.map((p) => ({
-                            ...p,
-                            paperColor: pagePaperColor(p, dark),
-                          })),
-                        }),
-                        `${note.title.replace(/[\\/:*?"<>|]/g, "_")}.pdf`,
-                        "application/pdf",
-                      ),
-                    )
-                  }
-                >
-                  <Download size={15} />
-                  <span>PDF書き出し</span>
-                </button>
+                <ShareMenu disabled={!note||!!busy} onPdf={exportPdfNote} onExport={exportNotebook}/>
               </div>
             </header>
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
@@ -872,6 +881,7 @@ function App() {
           if (f) void restore(f);
         }}
       />
+      <input ref={noteInput} hidden type="file" accept={`${NOTE_EXTENSION},${NOTE_MIME}`} aria-label="ノートファイル" onChange={e=>{const file=e.target.files?.[0];e.target.value="";if(file)void importNotebook(file);}}/>
       {settingsOpen && <SettingsPage ready={ready} onApply={view==="editor"&&note?.pages.some(p=>p.pdfIndex===undefined)?()=>{if(!note||!page)return;const p=preferencesRef.current;updateNote({...note,pages:applyPaperTemplate(note.pages,{...page,pdfIndex:undefined,paper:p.paperPattern,paperColor:p.paperColor==="auto"?(dark?"#1e2822":"#fffefa"):p.paperColor,backgroundImage:p.paperImage},dark)});}:undefined} value={preferences} onChange={storePreferences} onClose={closeSettings}
         sync={<SyncPanel method={syncMethod} onChange={changeSyncMethod} drive={drive} folder={folderSync} ready={ready}/>}
         backup={backupAction} restore={()=>backupInput.current?.click()} help={<HelpContent/>}
@@ -882,6 +892,7 @@ function App() {
           {busy}…
         </div>
       )}
+      {conflictPending&&!busy&&<ConflictDialog key={conflictPending.conflict.key} conflict={conflictPending.conflict} dark={dark} onChoose={chooseConflict} onDefer={deferConflict}/>}
       {blocked && (
         <div className="modal-backdrop">
           <div className="modal">

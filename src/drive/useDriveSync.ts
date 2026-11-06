@@ -11,10 +11,13 @@ import { loadSetting, saveSetting } from "../storage";
 import { DEFAULT_GOOGLE_CLIENT_ID } from "./config";
 import {SYNC_IDLE_MS,SYNC_POLL_MS,syncCheckpoint} from "../syncScheduling";
 import {SyncWorkInterrupted,cancelSyncWork} from "../syncWork";
+import {SyncConflictRequired,type NoteConflict,type ConflictChoice} from "./conflicts";
 export type SyncProps = {
   enabled?: boolean;
   isIdle?:()=>boolean;
   activityVersion?:()=>number;
+  resolveConflict?:(conflict:NoteConflict)=>ConflictChoice|undefined;
+  onConflict?:(conflict:NoteConflict)=>void;
   snapshot: LibrarySnapshot;
   ready: boolean;
   canSync: () => boolean;
@@ -83,6 +86,7 @@ export function useDriveSync(props: SyncProps) {
         repository: repo,
         state: state.current,
         checkpoint,
+        resolveConflict:callbacks.current.resolveConflict,
         getLocal: () => callbacks.current.snapshot,
         persistState: async (next) => {
           if (epoch !== generation.current || callbacks.current.enabled === false) throw new SyncRetry();
@@ -113,11 +117,12 @@ export function useDriveSync(props: SyncProps) {
       );
       if (result.conflicts)
         setMessage(
-          "同時編集を検出し、競合コピーを作成しました。両方の内容を確認してください。",
+          "同期の競合を解決しました。両方を残した場合は競合コピーを確認してください。",
         );
     } catch (error) {
       if (epoch !== generation.current) return;
-      if (error instanceof SyncRetry || error instanceof SyncWorkInterrupted) {
+      if(error instanceof SyncConflictRequired){clearTimeout(retry.current);setStatus("競合の確認が必要");setMessage("残す内容を選んでください。");callbacks.current.onConflict?.(error.conflict);}
+      else if (error instanceof SyncRetry || error instanceof SyncWorkInterrupted) {
         setStatus("編集中・次回同期で再試行");
         clearTimeout(retry.current);retry.current = setTimeout(() => void tick(), SYNC_IDLE_MS);
       } else {

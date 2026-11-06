@@ -6,6 +6,7 @@ import {FolderRepository} from "./repository";
 import {FolderPending, folderError, folderSyncSupported, pickSyncDirectory, type SyncDirectory} from "./files";
 import {SYNC_IDLE_MS,SYNC_POLL_MS,syncCheckpoint} from "../syncScheduling";
 import {SyncWorkInterrupted} from "../syncWork";
+import {SyncConflictRequired} from "../drive/conflicts";
 
 export const CONNECTION_KEY = "folder-sync-connection";
 type Connection = {version: 1; folder: SyncDirectory; key: string};
@@ -38,7 +39,7 @@ export function useFolderSync(props: SyncProps) {
       repo.setCheckpoint(checkpoint);
       await repo.verifyKnown(state.current);
       const result = await synchronize({
-        repository: repo, state: state.current, getLocal: () => callbacks.current.snapshot,checkpoint,
+        repository: repo, state: state.current, getLocal: () => callbacks.current.snapshot,checkpoint,resolveConflict:callbacks.current.resolveConflict,
         persistState: async next => {if (!active()) throw new SyncRetry();await saveSetting(config.key, next);state.current = structuredClone(next);},
         apply: async (next, nextState, expected) => {
           if (!active()) return false;
@@ -49,10 +50,11 @@ export function useFolderSync(props: SyncProps) {
       if (!active()) return;
       state.current = result.state;setConflicts(n => n + result.conflicts);
       setStatus("フォルダー保存済み " + new Date().toLocaleTimeString("ja-JP", {hour: "2-digit", minute: "2-digit"}));
-      if (result.conflicts) setMessage("同時編集を検出しました。両方の内容を競合コピーに残しています。");
+      if (result.conflicts) setMessage("同期の競合を解決しました。両方を残した場合は競合コピーを確認してください。");
     } catch (error) {
       if (!active()) return;
-      if (error instanceof SyncRetry || error instanceof SyncWorkInterrupted) {setStatus("編集中・次回同期で再試行");clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);}
+      if(error instanceof SyncConflictRequired){clearTimeout(retry.current);setStatus("競合の確認が必要");setMessage("残す内容を選んでください。");callbacks.current.onConflict?.(error.conflict);}
+      else if (error instanceof SyncRetry || error instanceof SyncWorkInterrupted) {setStatus("編集中・次回同期で再試行");clearTimeout(retry.current);retry.current=setTimeout(()=>void tick(),SYNC_IDLE_MS);}
       else if (error instanceof FolderPending) {setStatus("PCの同期完了待ち");setMessage(error.message);}
       else {
         setStatus("フォルダーへの同期を再試行してください");setMessage(folderError(error));

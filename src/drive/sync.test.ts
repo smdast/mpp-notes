@@ -1,6 +1,7 @@
 import { it, expect } from "vitest";
 import { makeBackup, readBackupBundle } from "../backup";
 import { newNote, type Note } from "../model";
+import {SyncConflictRequired,type NoteConflict,type ConflictChoice} from "./conflicts";
 import {
   newSyncState,
   synchronize,
@@ -68,9 +69,10 @@ function client(repo: MemoryDrive, notes: Note[] = [], folders: string[] = []) {
   const c = {
     state: newSyncState(),
     local: { notes, folders } as LibrarySnapshot,
-    async run() {
+    async run(resolveConflict?:(conflict:NoteConflict)=>ConflictChoice|undefined) {
       const result = await synchronize({
         repository: repo,
+        resolveConflict,
         state: c.state,
         getLocal: () => c.local,
         persistState: async (state) => {
@@ -191,4 +193,49 @@ it("reuploads local data if the Drive history has been removed", async () => {
   const b = client(repo);
   await b.run();
   expect(b.local.notes[0].title).toBe("端末に残す");
+});
+
+it("defers a conflict without replacing local notes, defaults to the newer edit and converges on the chosen older edit",async()=>{
+  const repo=new MemoryDrive(),n=newNote("元"),a=client(repo,[n]),b=client(repo);
+  await a.run();await b.run();
+  a.local={...a.local,notes:[{...n,title:"新しい端末A",updated:n.updated+2000}]};
+  b.local={...b.local,notes:[{...n,title:"古い端末B",updated:n.updated+1000}]};
+  await a.run();let conflict:NoteConflict|undefined;
+  await expect(b.run(value=>{conflict=value;return undefined;})).rejects.toBeInstanceOf(SyncConflictRequired);
+  expect(b.local.notes[0].title).toBe("古い端末B");
+  expect(conflict!.variants.find(v=>v.id===conflict!.suggested)?.note?.title).toBe("新しい端末A");
+  expect(repo.events.filter(e=>e.entity===n.id)).toHaveLength(3);
+  const count=repo.events.length,key=conflict!.key;
+  await expect(b.run(value=>{expect(value.key).toBe(key);return undefined;})).rejects.toBeInstanceOf(SyncConflictRequired);
+  expect(repo.events).toHaveLength(count);
+  const older=conflict!.variants.find(v=>v.local)!;
+  const result=await b.run(()=>({mode:"keep",revisionId:older.id}));
+  expect(result.conflicts).toBe(1);expect(b.local.notes).toHaveLength(1);
+  await a.run(()=>{throw new Error("already resolved");});
+  expect(a.local.notes[0].title).toBe("古い端末B");
+  expect(a.local.notes[0].updated).toBe(n.updated+1000);
+  await b.run();expect(repo.events).toHaveLength(count+1);
+});
+
+it("requires a fresh decision if another head arrives while reviewing a conflict",async()=>{
+  const repo=new MemoryDrive(),n=newNote("元"),a=client(repo,[n]),b=client(repo),c=client(repo);
+  await a.run();await b.run();await c.run();
+  a.local={...a.local,notes:[{...n,title:"A"}]};b.local={...b.local,notes:[{...n,title:"B"}]};c.local={...c.local,notes:[{...n,title:"C"}]};
+  await a.run();let first="";
+  await expect(b.run(value=>{first=value.key;return undefined;})).rejects.toBeInstanceOf(SyncConflictRequired);
+  await expect(c.run(()=>undefined)).rejects.toBeInstanceOf(SyncConflictRequired);
+  await expect(b.run(value=>{expect(value.key).not.toBe(first);expect(value.variants).toHaveLength(3);return undefined;})).rejects.toBeInstanceOf(SyncConflictRequired);
+  await b.run(()=>({mode:"both"}));await a.run();await c.run();
+  expect(b.local.notes).toHaveLength(3);expect(a.local.notes).toHaveLength(3);expect(c.local.notes).toHaveLength(3);
+  expect(new Set(b.local.notes.map(note=>note.title.replace("（競合コピー）","")))).toEqual(new Set(["A","B","C"]));
+});
+
+it("allows explicitly choosing deletion or retaining the edited note in a deletion conflict",async()=>{
+  for(const keepDeletion of [true,false]){
+    const repo=new MemoryDrive(),n=newNote("元"),a=client(repo,[n]),b=client(repo);
+    await a.run();await b.run();a.local={...a.local,notes:[]};b.local={...b.local,notes:[{...n,title:"編集中",updated:n.updated+5000}]};await a.run();
+    await b.run(value=>({mode:"keep",revisionId:value.variants.find(v=>keepDeletion?!v.note:!!v.note)!.id}));await a.run();
+    expect(a.local.notes).toHaveLength(keepDeletion?0:1);expect(b.local.notes).toHaveLength(keepDeletion?0:1);
+    if(!keepDeletion)expect(a.local.notes[0].title).toBe("編集中");
+  }
 });

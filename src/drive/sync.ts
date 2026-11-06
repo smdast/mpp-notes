@@ -2,6 +2,7 @@ import { uid, type Note } from "../model";
 import { normalizeFolders } from "../folders";
 import {hash} from "../syncCodec";
 import {fingerprintInBackground} from "../syncWork";
+import {SyncConflictRequired,newestVariant,type NoteConflict,type ConflictChoice} from "./conflicts";
 export {hash} from "../syncCodec";
 export type Payload =
   | { kind: "note"; note: Note }
@@ -110,6 +111,7 @@ export async function synchronize({
   persistState,
   apply,
   checkpoint=async()=>{},
+  resolveConflict,
 }: {
   repository: Repository;
   state: SyncState;
@@ -121,6 +123,7 @@ export async function synchronize({
     expected: LibrarySnapshot,
   ) => Promise<boolean>;
   checkpoint?:()=>Promise<void>;
+  resolveConflict?:(conflict:NoteConflict)=>ConflictChoice|undefined;
 }) {
   const snapshot = getLocal(),
     startNotes = snapshot.notes,
@@ -230,6 +233,25 @@ export async function synchronize({
         "同期履歴を読み取れません。端末内のノートは保持しました。",
       );
     if (current.length > 1) {
+      if(entity!=="__folders__"&&current.some(event=>event.kind!=="delete")&&resolveConflict){
+        const variants=await Promise.all(current.map(async event=>{
+          const payload=event.kind==="delete"?undefined:await read(event);
+          if(payload&&payload.kind!=="note")throw new Error("同期ノートの形式が無効です。");
+          const note=payload?.kind==="note"?payload.note:undefined;
+          return {id:event.id,device:event.device,local:event.device===next.device,updated:note?.updated??event.time,note};
+        }));
+        const conflict:NoteConflict={key:JSON.stringify([entity,current.map(e=>e.id).sort()]),entity,variants,suggested:newestVariant(variants)};
+        await checkpoint();const choice=resolveConflict(conflict);
+        if(!choice)throw new SyncConflictRequired(conflict);
+        if(choice.mode==="keep"){
+          const selected=current.find(e=>e.id===choice.revisionId);if(!selected)throw new SyncConflictRequired(conflict);
+          const payload=selected.kind==="delete"?undefined:await read(selected),parents=current.map(e=>e.id).sort();
+          current=[await append({format:"mpp-sync",version:1,id:await deterministicId("choose:"+JSON.stringify([entity,parents,selected.id])),entity,parents,kind:selected.kind,device:next.device,time:Date.now()},payload)];
+          conflicts++;
+        }
+      }
+    }
+    if(current.length>1){
       const live = current.filter((e) => e.kind !== "delete"),
         parentIds = current.map((e) => e.id).sort(),
         stamp = Math.max(...current.map((e) => e.time));

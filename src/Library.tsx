@@ -12,6 +12,7 @@ import {
   PanelLeft,
 } from "lucide-react";
 import { NoteCover } from "./NoteCover";
+import {formatUpdated} from "./formatTime";
 import { displayPath } from "./Breadcrumb";
 import type { Note } from "./model";
 import { folderName, parentFolder, isWithin } from "./folders";
@@ -31,6 +32,7 @@ type Props = {
   onMove: (n: Note, folder: string) => void;
   onNew: () => void;
   onImport: () => void;
+  onImportNote:()=>void;
   error: string;
   onDismiss: () => void;
   onRetry: () => void;
@@ -51,6 +53,7 @@ export function Library({
   onMove,
   onNew,
   onImport,
+  onImportNote,
   error,
   onDismiss,
   onRetry,
@@ -93,6 +96,7 @@ export function Library({
         <div>
           {themeControl}
           {driveControl}
+          <button className="export-button" disabled={!ready} onClick={onImportNote} aria-label="ノートファイルを取り込む"><FileUp size={16}/>ノート取り込み</button>
           <button
             className="export-button"
             disabled={!ready}
@@ -209,7 +213,7 @@ export function Library({
                   <h3>{n.title}</h3>
                   <p>
                     {n.pages.length} ページ <span>·</span>{" "}
-                    {new Date(n.updated).toLocaleDateString("ja-JP")}
+                    <time dateTime={Number.isFinite(new Date(n.updated).getTime())?new Date(n.updated).toISOString():undefined}>最終更新：{formatUpdated(n.updated)}</time>
                   </p>
                   <small>{n.folder ? displayPath(n.folder) : "未分類"}</small>
                 </div>

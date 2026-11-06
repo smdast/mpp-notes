@@ -22,7 +22,7 @@ export function DrivePanel({
         <div className="drive-status" role="status">
           <b>{drive.status}</b>
           {drive.account && <span>{drive.account}</span>}
-          {drive.conflicts > 0 && <span>競合コピー：{drive.conflicts} 件</span>}
+          {drive.conflicts > 0 && <span>解決した競合：{drive.conflicts} 件</span>}
         </div>
         {drive.message && (
           <p className="drive-message" role="alert">
@@ -65,7 +65,7 @@ export function DrivePanel({
         </div>
         <details className="drive-instructions">
           <summary>同期について</summary>
-          <p>自動同期は操作が10秒間止まってから行い、定期確認は2分ごとです。筆記を再開すると同期を延期します。「今すぐ同期」は待たずに開始できます。オフラインでは端末保存を続け、復帰後に再試行します。認証の期限切れ時は再接続が必要です。同時編集や削除との競合が起きた場合は、編集内容を競合コピーに残します。同期履歴はデータ保護のため保持します。</p>
+          <p>自動同期は操作が10秒間止まってから行い、定期確認は2分ごとです。筆記を再開すると同期を延期します。「今すぐ同期」は待たずに開始できます。オフラインでは端末保存を続け、復帰後に再試行します。認証の期限切れ時は再接続が必要です。同時編集や削除との競合では、プレビューと最終更新時刻を見て残す内容を選びます。新しい方が初期選択され、「両方残す」も選べます。同期履歴はデータ保護のため保持します。</p>
         </details>
     </section>
   );
