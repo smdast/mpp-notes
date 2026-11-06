@@ -618,8 +618,8 @@ export function Sheet({
     <div
       className="sheet"
       style={{
-        width: page.width * zoom,
-        height: page.height * zoom,
+        width: `calc(${page.width}px * var(--notebook-zoom, ${zoom}))`,
+        height: `calc(${page.height}px * var(--notebook-zoom, ${zoom}))`,
         background: paperColor,
       }}
     >

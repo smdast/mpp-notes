@@ -3,7 +3,7 @@ import {releases,CURRENT_VERSION} from "./releases";
 import {isNewerVersion,validVersion} from "./updates";
 import {formatUpdated} from "./formatTime";
 it("assigns unique ordered versions to the commit history and identifies the active release",()=>{
-  expect(releases[0].version).toBe(CURRENT_VERSION);expect(CURRENT_VERSION).toBe("1.17.0");
+  expect(releases[0].version).toBe(CURRENT_VERSION);
   expect(new Set(releases.map(r=>r.version)).size).toBe(releases.length);
   for(let i=0;i<releases.length;i++){
     expect(validVersion(releases[i].version)).toBe(true);expect(Number.isFinite(new Date(releases[i].date).getTime())).toBe(true);

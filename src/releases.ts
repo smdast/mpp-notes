@@ -2,7 +2,8 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
-  {version:"1.17.0",date:"2026-11-06",title:"ノートの共有と競合の選択",changes:["ノート管理に最終更新時刻を表示","ノート単体の .mppnote 形式による入出力と共有メニュー","更新履歴と、利用可能な更新のバージョン表示","同期競合で残す内容を選択。新しい更新を初期選択"],commits:[]},
+  {version:"1.17.1",date:"2026-11-06",title:"ズームの滑らかさと中心位置を改善",changes:["2本指の中点を基準にし、ズーム開始時の位置ずれを修正","操作中は表示だけを拡大縮小し、終了後に線とPDFを高解像度で再描画","倍率ボタンでも縦横の中心を保持し、スクロールバーの出現も補正"],commits:[]},
+  {version:"1.17.0",date:"2026-11-06",title:"ノートの共有と競合の選択",changes:["ノート管理に最終更新時刻を表示","ノート単体の .mppnote 形式による入出力と共有メニュー","更新履歴と、利用可能な更新のバージョン表示","同期競合で残す内容を選択。新しい更新を初期選択"],commits:["58e9b3b"]},
   {version:"1.16.1",date:"2026-11-05",title:"描画を優先する同期処理",changes:["同期の圧縮・読み込み・ハッシュ計算を別スレッド化","操作停止10秒後と2分間隔の同期、入力再開時の延期"],commits:["d963758"],legacyVersion:"1.0.1"},
   {version:"1.16.0",date:"2026-11-03",title:"同期フォルダー",changes:["PC内のクラウド同期フォルダーへの保存・同期","設定のGoogle Drive連携を同期へ変更"],commits:["4dda314"]},
   {version:"1.15.0",date:"2026-11-03",title:"ページをまたぐ移動",changes:["選択した線・画像をページ間で移動","消しゴム・なげなわ選択の判定と再描画を軽量化"],commits:["d5f500a"]},

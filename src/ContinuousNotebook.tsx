@@ -10,7 +10,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Note, Page, Stroke } from "./model";
 import { ScrollMotion } from "./motion";
 import { pagePaperColor } from "./paper";
-import { zoomScrollTop, clampZoom } from "./scrolling";
+import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, type PinchAnchor } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
@@ -67,12 +67,19 @@ function PageSlot({
     [visible, setVisible] = useState(index === 0),
     [pinned, setPinned] = useState(false);
   useEffect(() => {
+    let deferred:boolean|undefined;
+    const v=root.current;
+    const settled=()=>{if(deferred!==undefined){setVisible(deferred);deferred=undefined;}};
     const observer = new IntersectionObserver(
-      (entries) => setVisible(entries[0].isIntersecting),
+      (entries) => {
+        if(v?.classList.contains("zooming"))deferred=entries[0].isIntersecting;
+        else setVisible(entries[0].isIntersecting);
+      },
       { root: root.current, rootMargin: "600px" },
     );
     if (slot.current) observer.observe(slot.current);
-    return () => observer.disconnect();
+    v?.addEventListener("notebook-zoom-settled",settled);
+    return () => {observer.disconnect();v?.removeEventListener("notebook-zoom-settled",settled);};
   }, [root]);
   return (
     <div
@@ -80,8 +87,8 @@ function PageSlot({
       className="continuous-page"
       data-page-id={page.id}
       style={{
-        width: page.width * props.zoom,
-        height: page.height * props.zoom + 24,
+        width: `calc(${page.width}px * var(--notebook-zoom, ${props.zoom}))`,
+        height: `calc(${page.height}px * var(--notebook-zoom, ${props.zoom}) + 24px)`,
       }}
     >
       <div className="page-label">
@@ -119,7 +126,7 @@ function PageSlot({
         <div
           className="page-placeholder"
           style={{
-            height: page.height * props.zoom,
+            height: `calc(${page.height}px * var(--notebook-zoom, ${props.zoom}))`,
             background: pagePaperColor(page, props.dark),
           }}
         >
@@ -142,7 +149,11 @@ export function ContinuousNotebook(props: Props) {
     gesture = useRef<{ x: number; y: number; distance: number } | null>(null),
     swipe = useRef({ distance: 0, multi: false }),
     frame = useRef(0);
-  const { note, zoom, setZoom, onActive, onError } = props;
+  const { note, zoom, onActive, onError } = props;
+  const maxPageWidth=Math.max(...note.pages.map(p=>p.width));
+  const liveZoom=useRef(zoom),pinchAnchor=useRef<PinchAnchor|null>(null),zoomFrame=useRef(0);
+  const pendingZoom=useRef<{anchor:PinchAnchor;point:{x:number;y:number;distance:number}}|null>(null),committedZoom=useRef<number|null>(null);
+  const scrollPosition=useRef({left:0,top:0}),viewportSize=useRef({width:0,height:0});
   const motion = useRef<ScrollMotion | null>(null),
     velocity = useRef({ x: 0, y: 0, time: 0 });
   function targetAt(x:number,y:number){
@@ -200,25 +211,53 @@ export function ContinuousNotebook(props: Props) {
       motion.current = null;
     };
   }, []);
-  const previousZoom = useRef(zoom),
-    scrollY = useRef(0),
-    zoomAnchor = useRef<number | undefined>(undefined);
+  function flushZoom() {
+    cancelAnimationFrame(zoomFrame.current);zoomFrame.current=0;
+    const pending=pendingZoom.current,v=viewport.current;if(!pending||!v)return;
+    pendingZoom.current=null;
+    const next=clampZoom(pending.anchor.zoom*pending.point.distance/pending.anchor.distance);
+    // Resize the existing surfaces together; never resize their canvas buffers
+    // or restart PDF rendering while the fingers are moving.
+    v.style.setProperty("--notebook-zoom",String(next));
+    const target=pinchViewport(latest.current.note.pages,maxPageWidth,v.clientWidth,pending.anchor,pending.point);
+    liveZoom.current=target.zoom;
+    v.scrollLeft=target.left;v.scrollTop=target.top;
+    scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
+  }
+  function finishZoom() {
+    flushZoom();pinchAnchor.current=null;
+    const v=viewport.current;if(!v)return;
+    if(liveZoom.current!==latest.current.zoom){committedZoom.current=liveZoom.current;latest.current.setZoom(liveZoom.current);}
+    else {v.style.removeProperty("--notebook-zoom");v.classList.remove("zooming");v.dispatchEvent(new Event("notebook-zoom-settled"));}
+    scroll();
+  }
+  const previousZoom = useRef(zoom);
   useLayoutEffect(() => {
     const v = viewport.current;
     if (v && previousZoom.current !== zoom) {
       motion.current?.stop();
-      v.scrollTop = zoomScrollTop(
-        note.pages,
-        previousZoom.current,
-        zoom,
-        scrollY.current,
-        zoomAnchor.current ?? v.clientHeight / 2,
-      );
-      scrollY.current = v.scrollTop;
+      if(committedZoom.current!==zoom){
+        cancelAnimationFrame(zoomFrame.current);zoomFrame.current=0;pendingZoom.current=null;
+        pinchAnchor.current=null;gesture.current=null;touches.current.clear();
+        const from=liveZoom.current,position=scrollPosition.current,size=viewportSize.current;
+        const ax=(size.width||v.clientWidth)/2,ay=(size.height||v.clientHeight)/2;
+        v.style.setProperty("--notebook-zoom",String(zoom));
+        v.scrollLeft=zoomScrollLeft(maxPageWidth,size.width||v.clientWidth,from,zoom,position.left,ax,v.clientWidth)+ax-v.clientWidth/2;
+        v.scrollTop=zoomScrollTop(note.pages,from,zoom,position.top,ay)+ay-v.clientHeight/2;
+      }
+      liveZoom.current=zoom;committedZoom.current=null;
+      v.style.removeProperty("--notebook-zoom");v.classList.remove("zooming");
+      v.dispatchEvent(new Event("notebook-zoom-settled"));
+      scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
     }
     previousZoom.current = zoom;
-    zoomAnchor.current = undefined;
+    if(v)viewportSize.current={width:v.clientWidth,height:v.clientHeight};
   }, [zoom, note.pages]);
+  useEffect(()=>{
+    const v=viewport.current;if(!v)return;
+    const observer=new ResizeObserver(()=>{viewportSize.current={width:v.clientWidth,height:v.clientHeight};});
+    observer.observe(v);return()=>observer.disconnect();
+  },[]);
   useEffect(() => {
     if (!note.pdf) {
       setDocument(undefined);
@@ -254,7 +293,7 @@ export function ContinuousNotebook(props: Props) {
           16;
         if (motion.current) motion.current.easeTo(v.scrollLeft, top);
         else v.scrollTop = top;
-        scrollY.current = v.scrollTop;
+        scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
       }
     });
     return () => cancelAnimationFrame(id);
@@ -262,6 +301,7 @@ export function ContinuousNotebook(props: Props) {
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
+      cancelAnimationFrame(zoomFrame.current);
       props.onWriting(false);
     },
     [],
@@ -269,6 +309,7 @@ export function ContinuousNotebook(props: Props) {
   function writing(id: string, b: boolean) {
     if (b) {
       motion.current?.stop();
+      finishZoom();
       drawing.current.add(id);
       touches.current.clear();
       gesture.current = null;
@@ -277,12 +318,13 @@ export function ContinuousNotebook(props: Props) {
     props.onWriting(drawing.current.size > 0);
   }
   function scroll() {
-    if (viewport.current) scrollY.current = viewport.current.scrollTop;
+    if (viewport.current) scrollPosition.current={left:viewport.current.scrollLeft,top:viewport.current.scrollTop};
+    if(pinchAnchor.current)return;
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
       const v = viewport.current;
-      if (!v || drawing.current.size) return;
+      if (!v || drawing.current.size || pinchAnchor.current) return;
       const y =
         v.getBoundingClientRect().top + Math.min(v.clientHeight * 0.3, 150);
       const pages = [...v.querySelectorAll<HTMLElement>("[data-page-id]")];
@@ -296,6 +338,7 @@ export function ContinuousNotebook(props: Props) {
     if (e.pointerType !== "touch" && props.tool !== "hand" && e.button !== 1)
       return;
     motion.current?.stop();
+    flushZoom();
     velocity.current = { x: 0, y: 0, time: e.timeStamp };
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -305,20 +348,29 @@ export function ContinuousNotebook(props: Props) {
       swipe.current.distance = 0;
       setPull(0);
     } else swipe.current = { distance: 0, multi: e.pointerType !== "touch" };
-    gesture.current = { x: e.clientX, y: e.clientY, distance: 0 };
+    rebaseGesture();
+  }
+  function rebaseGesture() {
+    const current=touchGeometry([...touches.current.values()]),v=viewport.current!;
+    gesture.current=current;
+    pinchAnchor.current=null;
+    if(current&&touches.current.size>=2){
+      const r=v.getBoundingClientRect();
+      pinchAnchor.current={zoom:liveZoom.current,left:v.scrollLeft,top:v.scrollTop,x:current.x-r.left,y:current.y-r.top,distance:Math.max(1,current.distance),viewportWidth:v.clientWidth};
+      v.classList.add("zooming");
+    }
   }
   function move(e: RPointerEvent<HTMLDivElement>) {
     if (!touches.current.has(e.pointerId) || drawing.current.size) return;
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const points = [...touches.current.values()],
-      v = viewport.current!,
-      x = points.reduce((s, p) => s + p.x, 0) / points.length,
-      y = points.reduce((s, p) => s + p.y, 0) / points.length,
-      distance =
-        points.length > 1
-          ? Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y)
-          : 0,
-      prev = gesture.current;
+    const points = [...touches.current.values()],v=viewport.current!,current=touchGeometry(points)!;
+    const {x,y}=current,prev=gesture.current;
+    if(pinchAnchor.current&&points.length>=2){
+      const r=v.getBoundingClientRect();
+      pendingZoom.current={anchor:pinchAnchor.current,point:{...current,x:x-r.left,y:y-r.top}};
+      if(!zoomFrame.current)zoomFrame.current=requestAnimationFrame(flushZoom);
+      gesture.current=current;return;
+    }
     if (prev) {
       const dy = y - prev.y,
         max = Math.max(0, v.scrollHeight - v.clientHeight),
@@ -339,24 +391,12 @@ export function ContinuousNotebook(props: Props) {
         if (Math.abs(x - prev.x) > Math.abs(dy) * 2) swipe.current.distance = 0;
         setPull(swipe.current.distance);
       }
-      if (distance && prev.distance) {
-        const next = clampZoom((zoom * distance) / prev.distance),
-          r = v.getBoundingClientRect(),
-          ax = x - r.left,
-          ay = y - r.top,
-          sx = (v.scrollLeft + ax) / zoom;
-        scrollY.current = v.scrollTop;
-        zoomAnchor.current = ay;
-        setZoom(next);
-        requestAnimationFrame(() => {
-          v.scrollLeft = sx * next - ax;
-        });
-      }
     }
-    gesture.current = { x, y, distance };
+    gesture.current = current;
   }
   function end(e: RPointerEvent<HTMLDivElement>) {
     if (!touches.current.has(e.pointerId)) return;
+    flushZoom();
     const v = viewport.current!,
       add = shouldAddPage(
         true,
@@ -366,7 +406,8 @@ export function ContinuousNotebook(props: Props) {
         swipe.current.multi,
       );
     touches.current.delete(e.pointerId);
-    gesture.current = null;
+    if(touches.current.size<2)finishZoom();
+    rebaseGesture();
     swipe.current.distance = 0;
     setPull(0);
     if (add) {
@@ -399,7 +440,7 @@ export function ContinuousNotebook(props: Props) {
       <div
         className="continuous-stack"
         style={{
-          width: Math.max(...note.pages.map((p) => p.width)) * zoom + 96,
+          width: `calc(${maxPageWidth}px * var(--notebook-zoom, ${zoom}) + 96px)`,
         }}
       >
         {note.pages.map((page, index) => (

@@ -1,0 +1,55 @@
+import {it,expect} from "vitest";
+import {touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
+const pages=[{height:1123},{height:842},{height:1123}];
+it("starts at the actual two-finger midpoint without a first-move pan or zoom",()=>{
+  const first={x:170,y:220},second={x:470,y:420};
+  const start=touchGeometry([first,second])!;
+  expect(start.x).toBe(320);expect(start.y).toBe(320);
+  const anchor={...start,zoom:.7,left:0,top:620,viewportWidth:900};
+  expect(pinchViewport(pages,794,900,anchor,start)).toEqual({zoom:.7,left:0,top:620});
+  expect(touchGeometry([first,second,{x:999,y:999}])).toEqual(start);
+  // Rebase when one finger lifts, so the remaining finger pans by its delta.
+  expect(touchGeometry([second])).toEqual({...second,distance:0});
+});
+it("keeps a page point under a moving pinch centre, including fixed labels and gaps",()=>{
+  const from=.7,to=1.8,pageX=265,pageY=360,index=1;
+  const pageTop=(zoom:number)=>16+pages.slice(0,index).reduce((sum,p)=>sum+24+p.height*zoom+34,0)+24;
+  const stackCentre=(zoom:number)=>Math.max(900,794*zoom+96)/2;
+  const anchor={zoom:from,left:0,top:pageTop(from)+pageY*from-290,x:stackCentre(from)+(pageX-794/2)*from,y:290,distance:200,viewportWidth:900};
+  const current={x:anchor.x+35,y:anchor.y-24,distance:200*to/from};
+  const next=pinchViewport(pages,794,900,anchor,current);
+  expect(next.zoom).toBeCloseTo(to);
+  expect(stackCentre(to)+(pageX-794/2)*to-next.left).toBeCloseTo(current.x);
+  expect(pageTop(to)+pageY*to-next.top).toBeCloseTo(current.y);
+});
+it("uses a stable baseline for rapid samples and clamps to the supported zoom range",()=>{
+  const anchor={zoom:1,left:250,top:1200,x:420,y:280,distance:240,viewportWidth:800};
+  const target={x:450,y:290,distance:360};
+  for(const distance of [245,260,300,340])pinchViewport(pages,794,800,anchor,{...target,distance});
+  expect(pinchViewport(pages,794,800,anchor,target).zoom).toBe(1.5);
+  expect(pinchViewport(pages,794,800,anchor,{...target,distance:9000}).zoom).toBe(8);
+  expect(pinchViewport(pages,794,800,anchor,{...target,distance:1}).zoom).toBe(.25);
+});
+it("accounts for scrollbar changes without moving the page point at the viewport centre",()=>{
+  const from=.7,to=2,oldHeight=600,newHeight=590,pageY=600;
+  const top=16+24+pageY*from-oldHeight/2;
+  const next=zoomScrollTop(pages,from,to,top,oldHeight/2)+oldHeight/2-newHeight/2;
+  expect(16+24+pageY*to-next).toBeCloseTo(newHeight/2);
+  // Zooming out can remove the vertical scrollbar and widen the viewport.
+  const left=zoomScrollLeft(794,890,2,.7,320,445,900)+445-450;
+  const oldPoint=(320+445-(794*2+96)/2)/2;
+  expect(450+oldPoint*.7-left).toBeCloseTo(450);
+});
+it("preserves horizontal anchors when switching between centred and horizontally scrollable pages",()=>{
+  for(const [from,to] of [[.7,2],[2,.7],[2,4]]){
+    const left=from>1?310:0,x=450;
+    const next=zoomScrollLeft(794,900,from,to,left,x);
+    const restored=zoomScrollLeft(794,900,to,from,next,x);
+    expect(restored).toBeCloseTo(left);
+  }
+});
+it("does not scale page labels and gaps when anchoring between pages",()=>{
+  const from=.7,to=2,gapTop=16+24+1123*from+12;
+  const next=zoomScrollTop(pages,from,to,gapTop-200,200);
+  expect(next+200).toBeCloseTo(16+24+1123*to+12);
+});
