@@ -267,6 +267,7 @@ export function Sheet({
   useEffect(()=>{setButtonSelection(false);},[tool]);
   useEffect(()=>{
     if(incomingSelection?.pageId!==page.id)return;
+    if(tool!=="lasso")setButtonSelection(true);
     selected.current=new Set(incomingSelection.ids);setPopupOpen(true);refreshSelection(v=>v+1);schedule();
   },[incomingSelection?.token,page.id]);
   useEffect(() => {
