@@ -762,6 +762,7 @@ function App() {
                 <section className="desk">
                   <ContinuousNotebook
                     selectionButton={preferences.selectionButton}
+                    eraserButton={preferences.eraserButton}
                     shortcuts={preferences.shortcuts}
                     dark={dark}
                     activePageId={page.id}

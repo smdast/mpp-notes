@@ -27,3 +27,12 @@ it("keeps unrecognized writing intact and rejects movement on release or a reset
   expect(correctHeldShape(writing,[],hold,release(700))).toBe(writing);
   hold.reset();expect(hold.ready(100,5,2000)).toBe(false);
 });
+it("the live preview countdown follows movement but ignores endpoint jitter",()=>{
+  const hold=moved();
+  expect(hold.remaining(300)).toBe(90);
+  expect(hold.move(101,6,310,4)).toBe(false);
+  expect(hold.remaining(390)).toBe(0);
+  expect(hold.move(112,5,400,5)).toBe(true);
+  expect(hold.remaining(405)).toBe(295);
+  expect(hold.endpointCount).toBe(5);
+});

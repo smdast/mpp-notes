@@ -6,12 +6,12 @@ import {defaultShortcuts,shortcutFromEvent,shortcutAction,readShortcuts,reserved
 import {saveSetting,loadSetting} from "./storage";
 const pen=(buttons:number,button=-1,pressure=.6)=>({pointerType:"pen",buttons,button,pressure});
 const key=(code:string,patch:Partial<KeyboardEvent>={})=>({code,key:code.replace("Key","").toLowerCase(),ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,...patch});
-it("keeps the selection button separate from the dedicated eraser in both configurations",()=>{
-  for(const selection of ["lasso","eraser"] as const){
-    expect(penButtonTool(pen(2,2),selection)).toBe(selection);expect(penButtonTool(pen(3,0),selection)).toBe(selection);
-    expect(penButtonTool(pen(32,5),selection)).toBe("eraser");expect(penButtonTool(pen(34),selection)).toBe("eraser");
-    expect(penButtonTool(pen(1),selection)).toBeUndefined();expect(penButtonTool(pen(0,5,0),selection)).toBeUndefined();expect(penButtonTool(pen(1,5,.6),selection)).toBeUndefined();
-    expect(penButtonTool({...pen(2,2),pointerType:"mouse"},selection)).toBeUndefined();
+it("applies independent mappings to the selection and eraser signals",()=>{
+  for(const selection of ["lasso","eraser"] as const)for(const eraser of ["lasso","eraser"] as const){
+    expect(penButtonTool(pen(2,2),selection,eraser)).toBe(selection);expect(penButtonTool(pen(3,0),selection,eraser)).toBe(selection);
+    expect(penButtonTool(pen(32,5),selection,eraser)).toBe(eraser);expect(penButtonTool(pen(34),selection,eraser)).toBe(eraser);
+    expect(penButtonTool(pen(1),selection,eraser)).toBeUndefined();expect(penButtonTool(pen(0,5,0),selection,eraser)).toBeUndefined();expect(penButtonTool(pen(1,5,.6),selection,eraser)).toBeUndefined();
+    expect(penButtonTool({...pen(2,2),pointerType:"mouse"},selection,eraser)).toBeUndefined();
   }
 });
 it("distinguishes pressing a barrel button in hover from contacting the page",()=>{
@@ -43,11 +43,12 @@ it("retains native clipboard paths only for their matching command",()=>{
   expect(shortcutAction(map,key("KeyV",{ctrlKey:true}))).toBeUndefined();
   expect(shortcutAction(map,key("KeyV",{altKey:true}))).toBe("paste");
 });
-it("persists operation preferences and upgrades previous settings with a lasso selection button",async()=>{
-  expect(readPreferences({theme:"dark"}).selectionButton).toBe("lasso");
-  const value=defaultPreferences();value.selectionButton="eraser";value.shortcuts.pen=["KeyB"];value.shortcuts.undo=["Alt+KeyZ"];
+it("persists both button assignments and retains older configurations",async()=>{
+  expect(readPreferences({theme:"dark"})).toMatchObject({selectionButton:"lasso",eraserButton:"eraser"});
+  expect(readPreferences({selectionButton:"eraser"})).toMatchObject({selectionButton:"eraser",eraserButton:"eraser"});
+  const value=defaultPreferences();value.selectionButton="eraser";value.eraserButton="lasso";value.shortcuts.pen=["KeyB"];value.shortcuts.undo=["Alt+KeyZ"];
   await saveSetting("operation-settings-test",value);
   const restored=readPreferences(await loadSetting("operation-settings-test"));
-  expect(restored.selectionButton).toBe("eraser");expect(restored.shortcuts.pen).toEqual(["KeyB"]);expect(restored.shortcuts.undo).toEqual(["Alt+KeyZ"]);
+  expect(restored).toMatchObject({selectionButton:"eraser",eraserButton:"lasso"});expect(restored.shortcuts.pen).toEqual(["KeyB"]);expect(restored.shortcuts.undo).toEqual(["Alt+KeyZ"]);
   expect(readPreferences({selectionButton:"invalid",shortcuts:{pen:["<script>"]}}).selectionButton).toBe("lasso");
 });

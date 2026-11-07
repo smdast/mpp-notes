@@ -24,6 +24,7 @@ import type {SelectionButtonAction} from "./penInput";
 import {readNoteView,captureNoteView,restoreNoteView,saveNoteView,type NoteView} from "./noteView";
 type Props = {
   selectionButton:SelectionButtonAction;
+  eraserButton:SelectionButtonAction;
   shortcuts:ShortcutMap;
   note: Note;
   onPasted: () => void;
@@ -102,6 +103,7 @@ function PageSlot({
       {visible || pinned ? (
         <Sheet
           selectionButton={props.selectionButton}
+          eraserButton={props.eraserButton}
           shortcuts={props.shortcuts}
           page={page}
           onPasted={props.onPasted}

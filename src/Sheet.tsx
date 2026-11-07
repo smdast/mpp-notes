@@ -24,7 +24,7 @@ import {
   type EraserMode,
 } from "./editing";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import {EndpointHold,correctHeldShape} from "./shapeHold";
+import {EndpointHold,correctHeldShape,recognizeHeldShape} from "./shapeHold";
 import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
 import { SelectionPopup } from "./SelectionPopup";
@@ -35,6 +35,7 @@ import type {SelectionDrag,IncomingSelection} from "./selectionTransfer";
 export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
 type Props = {
   selectionButton?:SelectionButtonAction;
+  eraserButton?:SelectionButtonAction;
   shortcuts?:ShortcutMap;
   page: Page;
   onPasted: () => void;
@@ -61,6 +62,7 @@ type Props = {
 };
 export function Sheet({
   selectionButton="lasso",
+  eraserButton="eraser",
   shortcuts=defaultShortcuts(),
   page,
   onPasted,
@@ -87,6 +89,7 @@ export function Sheet({
 }: Props) {
   const inputTool=useRef<Tool|null>(null),buttonSelection=useRef(false);
   const shapeHold=useRef(new EndpointHold());
+  const shapePreview=useRef<Stroke|null>(null),shapeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const [,refreshButtonSelection]=useState(0);
   function selectionMode(){return tool==="lasso"||buttonSelection.current;}
   function setButtonSelection(value:boolean){if(buttonSelection.current!==value){buttonSelection.current=value;refreshButtonSelection(v=>v+1);}}
@@ -348,7 +351,8 @@ export function Sheet({
       ctx.drawImage(backing.current.canvas,0,0,page.width,page.height);
       if(transform.current)for(const s of working.current)if(selected.current.has(s.id))drawStroke(ctx,s);
     }else working.current.forEach((s) => drawStroke(ctx, s));
-    if (current.current) drawStroke(ctx, current.current);
+    const draft=shapePreview.current??current.current;
+    if(draft)drawStroke(ctx,draft);
     if (selectionMode()) {
       ctx.save();
       ctx.strokeStyle = isDarkColor(paperColor) ? "#acd49a" : "#397956";
@@ -406,6 +410,25 @@ export function Sheet({
         paint();
       });
   }
+  function clearShapePreview(){
+    clearTimeout(shapeTimer.current);shapeTimer.current=undefined;shapePreview.current=null;
+  }
+  function armShapePreview(){
+    if(!shapeCorrection||shapeTimer.current!==undefined)return;
+    const check=()=>{
+      shapeTimer.current=undefined;
+      const stroke=current.current;
+      if(!stroke||active.current===null)return;
+      const remaining=shapeHold.current.remaining(performance.now());
+      // Let an outstanding timer follow the latest endpoint, without creating
+      // a timer for every sample of a moving stroke.
+      if(remaining>0){shapeTimer.current=setTimeout(check,remaining);return;}
+      shapePreview.current=recognizeHeldShape(stroke,original.current,shapeHold.current.endpointCount);
+      if(shapePreview.current!==stroke)paint();
+    };
+    shapeTimer.current=setTimeout(check,shapeHold.current.remaining(performance.now()));
+  }
+  useEffect(()=>{if(!shapeCorrection&&shapePreview.current){clearShapePreview();paint();}else if(!shapeCorrection)clearShapePreview();},[shapeCorrection]);
   useEffect(() => {
     discardBacking();
     setPopupOpen(true);
@@ -427,6 +450,7 @@ export function Sheet({
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
+      clearShapePreview();
       discardBacking();
       onWriting(false);
     },
@@ -498,7 +522,7 @@ export function Sheet({
     );
   }
   function down(e: RPointerEvent<HTMLCanvasElement>) {
-    const buttonTool=penButtonTool(e,selectionButton);
+    const buttonTool=penButtonTool(e,selectionButton,eraserButton);
     if(e.pointerType==="pen"&&!penInContact(e)){if(buttonTool){e.preventDefault();e.stopPropagation();}return;}
     if(e.pointerType==="mouse"&&e.button!==0)return;
     const action=buttonTool||(e.pointerType==="touch"&&buttonSelection.current?"lasso":tool);
@@ -566,11 +590,12 @@ export function Sheet({
     schedule();
   }
   function move(e: RPointerEvent<HTMLCanvasElement>) {
-    if(active.current===null&&penInContact(e)&&penButtonTool(e,selectionButton))down(e);
+    const buttonTool=penButtonTool(e,selectionButton,eraserButton);
+    if(active.current===null&&penInContact(e)&&buttonTool)down(e);
     if (cursor.current) {
       const show =
         e.pointerType !== "touch" &&
-        (tool === "eraser" || penButtonTool(e,selectionButton)==="eraser" || (active.current !== null && erasing.current));
+        (active.current===e.pointerId?inputTool.current:buttonTool??tool)==="eraser";
       cursor.current.style.display = show ? "block" : "none";
       if (show) {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -613,7 +638,12 @@ export function Sheet({
         } else if (moving.current)
           onSelectionDrag({phase:"move",strokes:dragStrokes.current,start:moving.current,client:{x:sample.clientX,y:sample.clientY}});
         else {const previous=lasso.current.at(-1);if(!previous||Math.hypot(p.x-previous.x,p.y-previous.y)>=2/zoom)lasso.current.push(p);}
-      } else if(current.current){current.current.points.push(p);shapeHold.current.move(sample.clientX,sample.clientY,sample.timeStamp,current.current.points.length);}
+      } else if(current.current){
+        current.current.points.push(p);
+        if(shapeHold.current.move(sample.clientX,sample.clientY,sample.timeStamp,current.current.points.length)){
+          shapePreview.current=null;armShapePreview();
+        }
+      }
     }
     if(!moving.current)schedule();
   }
@@ -634,14 +664,18 @@ export function Sheet({
       lasso.current = [];
     }
     if (current.current) {
-      const erased=!cancel && inputTool.current === "pen" && scratchErase
+      const stroke=current.current;
+      const corrected=!cancel&&shapeCorrection&&shapeHold.current.ready(e.clientX,e.clientY,e.timeStamp)
+        ? shapePreview.current??correctHeldShape(stroke,page.strokes,shapeHold.current,e) : stroke;
+      const erased=!cancel && corrected===stroke && inputTool.current === "pen" && scratchErase
         ? eraseScratch(original.current,current.current.points,zoom) : null;
       working.current = erased || [
         ...working.current,
-        !cancel && shapeCorrection ? correctHeldShape(current.current,page.strokes,shapeHold.current,e) : current.current,
+        corrected,
       ];
     }
     current.current = null;
+    clearShapePreview();
     shapeHold.current.reset();
     active.current = null;
     inputTool.current=null;

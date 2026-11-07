@@ -16,6 +16,7 @@ export type PenSettings = {
 };
 export type Preferences = {
   selectionButton:SelectionButtonAction;
+  eraserButton:SelectionButtonAction;
   shortcuts:ShortcutMap;
   deletedPens?: BuiltinPenId[];
   scratchErase: boolean;
@@ -30,7 +31,7 @@ export type Preferences = {
   activePen: PenId;
 };
 export const defaultPreferences = (): Preferences => ({
-  selectionButton:"lasso",shortcuts:defaultShortcuts(),
+  selectionButton:"lasso",eraserButton:"eraser",shortcuts:defaultShortcuts(),
   eraserMode: "stroke", scratchErase: false, pagesCollapsed:false,
   theme: "system", accent: "green", paperColor: "auto", paperPattern: "grid",
   pens: {
@@ -46,6 +47,7 @@ export function readPreferences(value: unknown): Preferences {
   if (!value || typeof value !== "object") return base;
   const v = value as Partial<Preferences> & {shapeCorrection?:boolean};
   if(v.selectionButton==="eraser"||v.selectionButton==="lasso")base.selectionButton=v.selectionButton;
+  if(v.eraserButton==="eraser"||v.eraserButton==="lasso")base.eraserButton=v.eraserButton;
   base.shortcuts=readShortcuts(v.shortcuts);
   const legacyCorrection=typeof v.shapeCorrection === "boolean"?v.shapeCorrection:true;
   for(const p of Object.values(base.pens))p.shapeCorrection=legacyCorrection;
