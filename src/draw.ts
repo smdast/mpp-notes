@@ -1,6 +1,8 @@
 import type { Page, Stroke } from "./model";
-import { isDarkColor, LIGHT_PAPER } from "./paper";
+import { isDarkColor, isDarkPaperPixel, LIGHT_PAPER } from "./paper";
 import { inkImage } from "./images";
+import type { AutoPenColor } from "./preferences";
+import { strokeBounds } from "./spatial";
 export const PAPER_SPACING = 40;
 export function dashSegments(points: Stroke["points"], dash: number, gap: number): Stroke["points"][] {
   if (!points.length) return [];
@@ -182,6 +184,52 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, presmoothed
   }
   ctx.restore();
 }
+let backgroundSample: CanvasRenderingContext2D | null = null;
+
+export function strokeStartColor(
+  colors: AutoPenColor,
+  paper: HTMLCanvasElement | null,
+  point: { x: number; y: number },
+  page: Pick<Page, "width" | "height">,
+  paperColor: string,
+  images: Stroke[] = [],
+) {
+  const paperContext=paper?.getContext("2d");
+  if(!paper?.width||!paper.height||!paperContext)
+    return isDarkColor(paperColor)?colors.onDark:colors.onLight;
+
+  const scaleX=paper.width/page.width,scaleY=paper.height/page.height;
+  const x=Math.max(0,Math.min(paper.width-1,Math.floor(point.x*scaleX)));
+  const y=Math.max(0,Math.min(paper.height-1,Math.floor(point.y*scaleY)));
+  const layers=images.filter(image=>{
+    const bounds=strokeBounds(image);
+    return bounds.left<(x+1)/scaleX&&bounds.right>x/scaleX&&
+      bounds.top<(y+1)/scaleY&&bounds.bottom>y/scaleY;
+  });
+  let pixel:Uint8ClampedArray;
+  if(layers.length){
+    // Composite only the starting pixel. The ink canvas also contains pen
+    // strokes, which must not affect the background colour.
+    if(!backgroundSample){
+      const canvas=paper.ownerDocument.createElement("canvas");
+      canvas.width=canvas.height=1;
+      backgroundSample=canvas.getContext("2d",{willReadFrequently:true});
+    }
+    if(backgroundSample){
+      const sample=backgroundSample;
+      sample.resetTransform();
+      sample.clearRect(0,0,1,1);
+      sample.drawImage(paper,x,y,1,1,0,0,1,1);
+      sample.setTransform(scaleX,0,0,scaleY,-x,-y);
+      layers.forEach(image=>drawStroke(sample,image));
+      pixel=sample.getImageData(0,0,1,1).data;
+      return isDarkPaperPixel(pixel,paperColor)?colors.onDark:colors.onLight;
+    }
+  }
+  pixel=paperContext.getImageData(x,y,1,1).data;
+  return isDarkPaperPixel(pixel,paperColor)?colors.onDark:colors.onLight;
+}
+
 export function drawPaper(
   ctx: CanvasRenderingContext2D,
   p: Page,

@@ -60,22 +60,9 @@ export function defaultAutoPenColor(settings:PenSettings,id:PenId):AutoPenColor 
   return {enabled:false,onLight:lightPenColors[auto],onDark:darkPenColors[auto]};
 }
 
-export function strokeStartColor(
-  colors:AutoPenColor,
-  canvas:HTMLCanvasElement|null,
-  point:{x:number;y:number},
-  page:Pick<Page,"width"|"height">,
-  paperColor:string,
-) {
-  let dark=isDarkColor(paperColor);
-  const ctx=canvas?.getContext("2d");
-  if(canvas?.width&&canvas.height&&ctx){
-    const x=Math.max(0,Math.min(canvas.width-1,Math.floor(point.x*canvas.width/page.width)));
-    const y=Math.max(0,Math.min(canvas.height-1,Math.floor(point.y*canvas.height/page.height)));
-    const [r,g,b,alpha]=ctx.getImageData(x,y,1,1).data;
-    const coverage=alpha/255;
-    const [pr,pg,pb]=colorChannels(paperColor);
-    dark=isDarkRgb(r*coverage+pr*(1-coverage),g*coverage+pg*(1-coverage),b*coverage+pb*(1-coverage));
-  }
-  return dark?colors.onDark:colors.onLight;
+export function isDarkPaperPixel(pixel:Uint8ClampedArray,paperColor:string) {
+  const [r,g,b,alpha]=pixel;
+  const coverage=alpha/255;
+  const [pr,pg,pb]=colorChannels(paperColor);
+  return isDarkRgb(r*coverage+pr*(1-coverage),g*coverage+pg*(1-coverage),b*coverage+pb*(1-coverage));
 }

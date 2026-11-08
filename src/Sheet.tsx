@@ -3,12 +3,12 @@ import {penButtonTool,penInContact,type SelectionButtonAction} from "./penInput"
 import {defaultShortcuts,shortcutAction,nativeClipboardAction,type ShortcutMap} from "./shortcuts";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as RPointerEvent,
 } from "react";
-import { drawPaper, drawStroke } from "./draw";
-import {strokeStartColor} from "./paper";
+import { drawPaper, drawStroke, strokeStartColor } from "./draw";
 import type {AutoPenColor} from "./preferences";
 import { pagePoint, uid, type Page, type Point, type Stroke } from "./model";
 import {
@@ -106,6 +106,7 @@ export function Sheet({
   const cursor = useRef<HTMLDivElement>(null);
   // Keep decoded images alive only while their page is mounted.
   const decodedImages = useRef<HTMLImageElement[]>([]);
+  const imageLayers=useMemo(()=>page.strokes.filter(stroke=>stroke.image),[page.strokes]);
   const paper = useRef<HTMLCanvasElement>(null),
     ink = useRef<HTMLCanvasElement>(null);
   const current = useRef<Stroke | null>(null),
@@ -589,7 +590,7 @@ export function Sheet({
       current.current = {
         id: uid(),
         tool: action === "marker" ? "marker" : "pen",
-        color:autoColor?.enabled?strokeStartColor(autoColor,paper.current,p,page,paperColor):color,
+        color:autoColor?.enabled?strokeStartColor(autoColor,paper.current,p,page,paperColor,imageLayers):color,
         pressure,
         dotted,
         dashed,

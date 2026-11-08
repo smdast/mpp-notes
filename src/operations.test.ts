@@ -1,6 +1,9 @@
-import {strokeStartColor} from "./paper";
+import {strokeStartColor} from "./draw";
+import {createCanvas,Image} from "@napi-rs/canvas";
+import {prepareImages} from "./images";
+import type {Stroke} from "./model";
 import "fake-indexeddb/auto";
-import {it,expect} from "vitest";
+import {it,expect,vi} from "vitest";
 import {penButtonTool,penInContact} from "./penInput";
 import {defaultPreferences,readPreferences} from "./preferences";
 import {defaultShortcuts,shortcutFromEvent,shortcutAction,readShortcuts,reservedShortcut,formatShortcut,nativeClipboardAction} from "./shortcuts";
@@ -81,4 +84,32 @@ it("samples the background at the page-space start on a scaled canvas and blends
   expect(strokeStartColor(colors,canvas,{x:27,y:50},page,"#fffefa")).toBe(colors.onLight);
   expect(strokeStartColor(colors,canvas,{x:27,y:50},page,"#1e2822")).toBe(colors.onDark);
   expect(strokeStartColor(colors,null,{x:0,y:0},page,"#fffefa")).toBe(colors.onLight);
+});
+
+it("samples rotated inserted images in drawing order and sees through transparent pixels",async()=>{
+  const paper=createCanvas(200,200),paperContext=paper.getContext("2d");
+  paperContext.fillStyle="#ffffff";paperContext.fillRect(0,0,200,200);
+  const sticker=createCanvas(40,40),stickerContext=sticker.getContext("2d");
+  stickerContext.fillStyle="#000000";stickerContext.fillRect(0,0,20,40);
+  const under=createCanvas(20,40),underContext=under.getContext("2d");
+  underContext.fillStyle="#ffffff";underContext.fillRect(0,0,20,20);
+  underContext.fillStyle="#000000";underContext.fillRect(0,20,20,20);
+  const layer=(id:string,image:string,corners:number[][]):Stroke=>({
+    id,image,tool:"pen",width:.05,color:"#000000",points:corners.map(([x,y])=>({x,y,p:.5})),
+  });
+  const top=layer("rotated",sticker.toDataURL(),[[70,20],[70,60],[30,60],[30,20]]);
+  const bottom=layer("under",under.toDataURL(),[[45,20],[65,20],[65,60],[45,60]]);
+  vi.stubGlobal("Image",Image);
+  try{
+    const decoded=await prepareImages([bottom,top]);
+    const canvas=Object.assign(paper,{ownerDocument:{createElement:()=>createCanvas(1,1)}}) as unknown as HTMLCanvasElement;
+    const colors={enabled:true,onLight:"#111111",onDark:"#eeeeee"};
+    const at=(x:number,y:number,layers=[bottom,top])=>strokeStartColor(colors,canvas,{x,y},{width:100,height:100},"#ffffff",layers);
+    expect(at(55,30)).toBe(colors.onDark);
+    expect(at(55,30,[top,bottom])).toBe(colors.onLight);
+    expect(at(55,50)).toBe(colors.onDark);
+    expect(at(35,50)).toBe(colors.onLight);
+    expect(at(75,30)).toBe(colors.onLight);
+    expect(decoded).toHaveLength(2);
+  }finally{vi.unstubAllGlobals();}
 });
