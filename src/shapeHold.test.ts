@@ -36,3 +36,12 @@ it("the live preview countdown follows movement but ignores endpoint jitter",()=
   expect(hold.remaining(405)).toBe(295);
   expect(hold.endpointCount).toBe(5);
 });
+
+it("uses the configured delay and recognizes quick releases at zero",()=>{
+  const hold=moved(),stroke=line();
+  const end=release(190);
+  expect(hold.remaining(190,800)).toBe(700);
+  expect(correctHeldShape(stroke,[],hold,end,800)).toBe(stroke);
+  expect(correctHeldShape(stroke,[],hold,end,100).shape).toBe("line");
+  expect(correctHeldShape(stroke,[],hold,release(90,106,5),0).shape).toBe("line");
+});

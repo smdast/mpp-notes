@@ -33,3 +33,22 @@ it("rejects corrupt or out-of-range metadata and retains a session fallback if s
   const denied={...storage,setItem:()=>{throw new Error("denied");}},id=crypto.randomUUID();
   expect(saveNoteView(id,view,denied)).toBe(false);expect(readNoteView(id,denied)).toEqual(view);
 });
+
+it("restores the exact horizontal position and opens the same page after switching direction",()=>{
+  const zoom=1.5;
+  const left=16+794*zoom+34+200,top=420;
+  const view=captureNoteView(pages,zoom,left,top,900,"horizontal",600)!;
+  expect(view.pageId).toBe("b");
+  expect(restoreNoteView(pages,view,900,"horizontal",600)).toEqual({pageId:"b",left,top});
+  expect(restoreNoteView(pages,view,900)).toEqual({pageId:"b",left:0,top:16+24+1123*zoom+34});
+  const vertical=captureNoteView(pages,zoom,0,1800,900)!;
+  expect(restoreNoteView(pages,vertical,900,"horizontal",600)).toEqual({pageId:"b",left:left-200,top:0});
+});
+
+it("keeps the target page when the scroll position includes the leading gutter",()=>{
+  const left=794+34;
+  const view=captureNoteView(pages,1,left,0,900,"horizontal",600)!;
+  expect(view.pageId).toBe("b");
+  expect(restoreNoteView(pages,view,900,"horizontal",600).left).toBe(left);
+  expect(restoreNoteView(pages,view,900)).toEqual({pageId:"b",left:0,top:16+24+1123+34});
+});

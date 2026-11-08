@@ -15,6 +15,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Cloud,
+  FolderSync,
+  Settings,
+  CircleAlert,
   Plus,
   FileUp,
   Download,
@@ -192,6 +195,14 @@ function App() {
   const drive = useDriveSync({...syncProps,enabled:ready&&syncMethod==="google"});
   const folderSync = useFolderSync({...syncProps,enabled:ready&&syncMethod==="folder"});
   syncSaving.current=drive.working||folderSync.working;
+  const activeSync=syncMethod==="google"
+    ? (drive.connected||drive.working?drive:null)
+    : (folderSync.folderName?folderSync:null);
+  const displaySync=!!activeSync&&saveStatus!=="保存失敗";
+  const editorStatus=displaySync?activeSync.status:saveStatus;
+  const StatusIcon=editorStatus==="保存中…"||(displaySync&&activeSync.working) ? LoaderCircle
+    : editorStatus==="保存失敗" ? CircleAlert
+    : displaySync ? (syncMethod==="google"?Cloud:FolderSync) : Check;
   function changeSyncMethod(method:SyncMethod){setSyncMethod(method);enqueue(()=>saveSetting("sync-method",method));}
   function chooseConflict(choice:ConflictChoice){
     const request=conflictPendingRef.current;if(!request)return;
@@ -571,13 +582,8 @@ function App() {
       {view === "library" && !settingsOpen && (
         <aside className="sidebar">
           <a className="brand" href="./">
-            <span className="brand-icon">
-              <PenLine size={21} />
-            </span>
-            <span>
-              MPP <strong>Notes</strong>
-              <small>書く、考える。</small>
-            </span>
+            <img src="./icon.svg" width="36" height="36" alt=""/>
+            <span>MPP <strong>Notes</strong></span>
           </a>
           <button
             className="new-note"
@@ -653,7 +659,7 @@ function App() {
                   title="ノート管理へ戻る"
                   onClick={library}
                 >
-                  <BookOpen size={18} />
+                  <img src="./icon.svg" width="22" height="22" alt=""/>
                   <span>ノート管理</span>
                 </button>
                 <span className="breadcrumb-library">
@@ -717,21 +723,13 @@ function App() {
                 )}
               </div>
               <div className="top-actions">
-                <button className="icon-button" title="設定" onClick={openSettings}>⚙</button>
-                <span
-                  className={
-                    "save-status " + (saveStatus === "保存失敗" ? "failed" : "")
-                  }
-                  role="status"
-                >
-                  {saveStatus === "保存中…" ? (
-                    <LoaderCircle size={13} className="spin" />
-                  ) : (
-                    <Check size={14} />
-                  )}{" "}
-                  {saveStatus}
+                <span className={`save-status${displaySync?" sync-status":""}${saveStatus==="保存失敗"?" failed":""}`}
+                  role="status" title={editorStatus}>
+                  <StatusIcon size={14} className={StatusIcon===LoaderCircle?"spin":undefined} aria-hidden="true"/>
+                  <span>{editorStatus}</span>
                 </span>
                 <ShareMenu disabled={!note||!!busy} onPdf={exportPdfNote} onExport={exportNotebook}/>
+                <button className="icon-button" title="設定" aria-label="設定" onClick={openSettings}><Settings size={17}/></button>
               </div>
             </header>
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
@@ -761,6 +759,9 @@ function App() {
                   onError={setError}/>
                 <section className="desk">
                   <ContinuousNotebook
+                    direction={preferences.scrollDirection}
+                    settingsOpen={settingsOpen}
+                    shapeHoldMs={preferences.shapeHoldMs}
                     selectionButton={preferences.selectionButton}
                     eraserButton={preferences.eraserButton}
                     shortcuts={preferences.shortcuts}
@@ -1056,4 +1057,5 @@ function App() {
     </div>
   );
 }
+document.addEventListener("contextmenu",event=>event.preventDefault());
 createRoot(document.getElementById("root")!).render(<App />);

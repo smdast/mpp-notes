@@ -1,3 +1,4 @@
+import type {ScrollDirection} from "./scrolling";
 export const smoothStep = (current: number, target: number, dt: number) =>
   current + (target - current) * (1 - Math.exp(-Math.min(dt, 40) / 65));
 export function inertiaStep(velocity: number, dt: number) {
@@ -16,6 +17,7 @@ export class ScrollMotion {
     private element: HTMLElement,
     private reduced = () =>
       window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    private direction:()=>ScrollDirection=()=>"vertical",
   ) {
     element.addEventListener("wheel", this.wheel, { passive: false });
     document.addEventListener("visibilitychange", this.stop);
@@ -37,14 +39,9 @@ export class ScrollMotion {
     };
   }
   private wheel = (event: WheelEvent) => {
-    if (
-      event.ctrlKey ||
-      event.metaKey ||
-      this.reduced() ||
-      (event.deltaMode === 0 &&
-        Math.abs(event.deltaY) < 40 &&
-        Math.abs(event.deltaX) < 40)
-    ) {
+    const remap=this.direction()==="horizontal"&&event.deltaX===0&&event.deltaY!==0&&!event.shiftKey;
+    const precise=event.deltaMode===0&&Math.abs(event.deltaY)<40&&Math.abs(event.deltaX)<40;
+    if(event.ctrlKey||event.metaKey||(!remap&&(this.reduced()||precise))){
       this.stop();
       return;
     }
@@ -53,12 +50,17 @@ export class ScrollMotion {
       event.deltaMode === 1
         ? 18
         : event.deltaMode === 2
-          ? this.element.clientHeight
+          ? (remap?this.element.clientWidth:this.element.clientHeight)
           : 1;
     const active = this.frame && this.kind === "ease";
     const x = active ? this.targetX : this.element.scrollLeft,
       y = active ? this.targetY : this.element.scrollTop;
-    this.easeTo(x + event.deltaX * factor, y + event.deltaY * factor);
+    if(remap&&precise){
+      this.stop();
+      this.element.scrollLeft+=event.deltaY;
+      return;
+    }
+    this.easeTo(x + (remap?event.deltaY:event.deltaX) * factor, y + (remap?0:event.deltaY) * factor);
   };
   easeTo(x: number, y: number) {
     const max = this.bounds();

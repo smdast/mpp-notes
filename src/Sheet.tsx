@@ -24,7 +24,7 @@ import {
   type EraserMode,
 } from "./editing";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import {EndpointHold,correctHeldShape,recognizeHeldShape} from "./shapeHold";
+import {EndpointHold,correctHeldShape,recognizeHeldShape,SHAPE_HOLD_MS} from "./shapeHold";
 import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
 import { SelectionPopup } from "./SelectionPopup";
@@ -46,6 +46,7 @@ type Props = {
   dotted: boolean;
   dashed: boolean;
   shapeCorrection: boolean;
+  shapeHoldMs?:number;
   scratchErase:boolean;
   onActivate: () => void;
   zoom: number;
@@ -73,6 +74,7 @@ export function Sheet({
   dotted,
   dashed,
   shapeCorrection,
+  shapeHoldMs=SHAPE_HOLD_MS,
   scratchErase,
   onActivate,
   zoom,
@@ -414,21 +416,26 @@ export function Sheet({
     clearTimeout(shapeTimer.current);shapeTimer.current=undefined;shapePreview.current=null;
   }
   function armShapePreview(){
-    if(!shapeCorrection||shapeTimer.current!==undefined)return;
+    if(!shapeCorrection||shapeHoldMs===0||shapeTimer.current!==undefined)return;
     const check=()=>{
       shapeTimer.current=undefined;
       const stroke=current.current;
       if(!stroke||active.current===null)return;
-      const remaining=shapeHold.current.remaining(performance.now());
+      const remaining=shapeHold.current.remaining(performance.now(),shapeHoldMs);
       // Let an outstanding timer follow the latest endpoint, without creating
       // a timer for every sample of a moving stroke.
       if(remaining>0){shapeTimer.current=setTimeout(check,remaining);return;}
       shapePreview.current=recognizeHeldShape(stroke,original.current,shapeHold.current.endpointCount);
       if(shapePreview.current!==stroke)paint();
     };
-    shapeTimer.current=setTimeout(check,shapeHold.current.remaining(performance.now()));
+    shapeTimer.current=setTimeout(check,shapeHold.current.remaining(performance.now(),shapeHoldMs));
   }
-  useEffect(()=>{if(!shapeCorrection&&shapePreview.current){clearShapePreview();paint();}else if(!shapeCorrection)clearShapePreview();},[shapeCorrection]);
+  useEffect(()=>{
+    const hadPreview=!!shapePreview.current;
+    clearShapePreview();
+    if(hadPreview)paint();
+    if(current.current&&current.current.points.length>1)armShapePreview();
+  },[shapeCorrection,shapeHoldMs]);
   useEffect(() => {
     discardBacking();
     setPopupOpen(true);
@@ -665,8 +672,10 @@ export function Sheet({
     }
     if (current.current) {
       const stroke=current.current;
-      const corrected=!cancel&&shapeCorrection&&shapeHold.current.ready(e.clientX,e.clientY,e.timeStamp)
-        ? shapePreview.current??correctHeldShape(stroke,page.strokes,shapeHold.current,e) : stroke;
+      const held=shapeHold.current.ready(e.clientX,e.clientY,e.timeStamp,shapeHoldMs);
+      const corrected=!cancel&&shapeCorrection
+        ? (held?shapePreview.current:null)??correctHeldShape(stroke,page.strokes,shapeHold.current,e,shapeHoldMs)
+        : stroke;
       const erased=!cancel && corrected===stroke && inputTool.current === "pen" && scratchErase
         ? eraseScratch(original.current,current.current.points,zoom) : null;
       working.current = erased || [

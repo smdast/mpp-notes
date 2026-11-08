@@ -52,3 +52,10 @@ it("persists both button assignments and retains older configurations",async()=>
   expect(restored).toMatchObject({selectionButton:"eraser",eraserButton:"lasso"});expect(restored.shortcuts.pen).toEqual(["KeyB"]);expect(restored.shortcuts.undo).toEqual(["Alt+KeyZ"]);
   expect(readPreferences({selectionButton:"invalid",shortcuts:{pen:["<script>"]}}).selectionButton).toBe("lasso");
 });
+
+it("persists horizontal scrolling and zero delay while defaulting older or invalid settings",async()=>{
+  expect(readPreferences({})).toMatchObject({shapeHoldMs:300,scrollDirection:"vertical"});
+  expect(readPreferences({shapeHoldMs:Infinity,scrollDirection:"diagonal"})).toMatchObject({shapeHoldMs:300,scrollDirection:"vertical"});
+  await saveSetting("operation-display-test",{...defaultPreferences(),shapeHoldMs:0,scrollDirection:"horizontal"});
+  expect(readPreferences(await loadSetting("operation-display-test"))).toMatchObject({shapeHoldMs:0,scrollDirection:"horizontal"});
+});

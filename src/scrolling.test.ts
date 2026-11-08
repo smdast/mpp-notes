@@ -1,5 +1,5 @@
 import {it,expect} from "vitest";
-import {touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
+import {horizontalZoomPosition,touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
 const pages=[{height:1123},{height:842},{height:1123}];
 it("starts at the actual two-finger midpoint without a first-move pan or zoom",()=>{
   const first={x:170,y:220},second={x:470,y:420};
@@ -52,4 +52,16 @@ it("does not scale page labels and gaps when anchoring between pages",()=>{
   const from=.7,to=2,gapTop=16+24+1123*from+12;
   const next=zoomScrollTop(pages,from,to,gapTop-200,200);
   expect(next+200).toBeCloseTo(16+24+1123*to+12);
+});
+
+it("keeps a point on a mixed-size page under the pinch midpoint in a horizontal stack",()=>{
+  const landscapePages=[{width:794,height:1123},{width:842,height:612}];
+  const pageLeft=(zoom:number)=>16+794*zoom+34;
+  const paperCentre=(zoom:number,height:number)=>Math.max(height,1123*zoom+120)/2+12;
+  const x=240,y=320,point={x:310,y:280},from=.7,to=2.4;
+  const anchor={x,y,zoom:from,distance:200,viewportWidth:900,viewportHeight:600,
+    left:pageLeft(from)+200*from-x,top:paperCentre(from,600)-30*from-y};
+  const next=horizontalZoomPosition(landscapePages,anchor,to,point,588);
+  expect(pageLeft(to)+200*to-next.left).toBeCloseTo(point.x);
+  expect(paperCentre(to,588)-30*to-next.top).toBeCloseTo(point.y);
 });

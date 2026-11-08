@@ -3,6 +3,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type RefObject,
   type PointerEvent as RPointerEvent,
 } from "react";
@@ -10,7 +11,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Note, Page, Stroke } from "./model";
 import { ScrollMotion } from "./motion";
 import { pagePaperColor } from "./paper";
-import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, type PinchAnchor } from "./scrolling";
+import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, horizontalZoomPosition, type PinchAnchor, type ScrollDirection } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
@@ -40,6 +41,9 @@ type Props = {
   dotted: boolean;
   dashed: boolean;
   shapeCorrection: boolean;
+  shapeHoldMs: number;
+  direction: ScrollDirection;
+  settingsOpen: boolean;
   scratchErase:boolean;
   eraserMode: EraserMode;
   eraserSize: number;
@@ -118,6 +122,7 @@ function PageSlot({
           dotted={props.dotted}
           dashed={props.dashed}
           shapeCorrection={props.shapeCorrection}
+          shapeHoldMs={props.shapeHoldMs}
           scratchErase={props.scratchErase}
           eraserMode={props.eraserMode}
           eraserSize={props.eraserSize}
@@ -163,15 +168,18 @@ export function ContinuousNotebook(props: Props) {
     swipe = useRef({ distance: 0, multi: false }),
     frame = useRef(0);
   const { note, zoom, onActive, onError } = props;
+  const horizontal=props.direction==="horizontal";
+  const previousDirection=useRef(props.direction);
   const maxPageWidth=Math.max(...note.pages.map(p=>p.width));
+  const maxPageHeight=Math.max(...note.pages.map(p=>p.height));
   const liveZoom=useRef(zoom),pinchAnchor=useRef<PinchAnchor|null>(null),zoomFrame=useRef(0);
   const pendingZoom=useRef<{anchor:PinchAnchor;point:{x:number;y:number;distance:number}}|null>(null),committedZoom=useRef<number|null>(null);
   const scrollPosition=useRef({left:0,top:0}),viewportSize=useRef({width:0,height:0});
   const motion = useRef<ScrollMotion | null>(null),
     velocity = useRef({ x: 0, y: 0, time: 0 });
   function capturePosition(v=viewport.current){
-    if(!positionReady.current||!v||v.clientWidth<=0||v.clientHeight<=0)return;
-    viewPosition.current=captureNoteView(latest.current.note.pages,liveZoom.current,v.scrollLeft,v.scrollTop,v.clientWidth);
+    if(!positionReady.current||!v||v.clientWidth<=0||v.clientHeight<=0||previousDirection.current!==latest.current.direction)return;
+    viewPosition.current=captureNoteView(latest.current.note.pages,liveZoom.current,v.scrollLeft,v.scrollTop,v.clientWidth,latest.current.direction,v.clientHeight);
   }
   function persistPosition(v?:HTMLDivElement|null){
     if(v)capturePosition(v);clearTimeout(positionTimer.current);
@@ -233,7 +241,7 @@ export function ContinuousNotebook(props: Props) {
   }
   useEffect(()=>()=>stopDrag(),[]);
   useEffect(() => {
-    if (viewport.current) motion.current = new ScrollMotion(viewport.current);
+    if (viewport.current) motion.current = new ScrollMotion(viewport.current,undefined,()=>latest.current.direction);
     return () => {
       motion.current?.destroy();
       motion.current = null;
@@ -247,8 +255,10 @@ export function ContinuousNotebook(props: Props) {
     // Resize the existing surfaces together; never resize their canvas buffers
     // or restart PDF rendering while the fingers are moving.
     v.style.setProperty("--notebook-zoom",String(next));
-    const target=pinchViewport(latest.current.note.pages,maxPageWidth,v.clientWidth,pending.anchor,pending.point);
-    liveZoom.current=target.zoom;
+    const target=horizontal
+      ? horizontalZoomPosition(latest.current.note.pages,pending.anchor,next,pending.point,v.clientHeight)
+      : pinchViewport(latest.current.note.pages,maxPageWidth,v.clientWidth,pending.anchor,pending.point);
+    liveZoom.current=next;
     v.scrollLeft=target.left;v.scrollTop=target.top;
     scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
     rememberPosition();
@@ -267,7 +277,7 @@ export function ContinuousNotebook(props: Props) {
     v.style.setProperty("--notebook-zoom",String(openingZoom));
     liveZoom.current=openingZoom;
     if(initialView){
-      const restored=restoreNoteView(latest.current.note.pages,initialView,v.clientWidth);
+      const restored=restoreNoteView(latest.current.note.pages,initialView,v.clientWidth,props.direction,v.clientHeight);
       v.scrollLeft=restored.left;v.scrollTop=restored.top;latest.current.onActive(restored.pageId);
     }
     if(openingZoom!==latest.current.zoom){committedZoom.current=openingZoom;latest.current.setZoom(openingZoom);}
@@ -288,8 +298,15 @@ export function ContinuousNotebook(props: Props) {
         const from=liveZoom.current,position=scrollPosition.current,size=viewportSize.current;
         const ax=(size.width||v.clientWidth)/2,ay=(size.height||v.clientHeight)/2;
         v.style.setProperty("--notebook-zoom",String(zoom));
-        v.scrollLeft=zoomScrollLeft(maxPageWidth,size.width||v.clientWidth,from,zoom,position.left,ax,v.clientWidth)+ax-v.clientWidth/2;
-        v.scrollTop=zoomScrollTop(note.pages,from,zoom,position.top,ay)+ay-v.clientHeight/2;
+        if(horizontal){
+          const target=horizontalZoomPosition(note.pages,
+            {...position,zoom:from,x:ax,y:ay,distance:1,viewportWidth:size.width,viewportHeight:size.height||v.clientHeight},
+            zoom,{x:v.clientWidth/2,y:v.clientHeight/2},v.clientHeight);
+          v.scrollLeft=target.left;v.scrollTop=target.top;
+        }else{
+          v.scrollLeft=zoomScrollLeft(maxPageWidth,size.width||v.clientWidth,from,zoom,position.left,ax,v.clientWidth)+ax-v.clientWidth/2;
+          v.scrollTop=zoomScrollTop(note.pages,from,zoom,position.top,ay,undefined,v.clientHeight/2);
+        }
       }
       liveZoom.current=zoom;committedZoom.current=null;
       v.style.removeProperty("--notebook-zoom");v.classList.remove("zooming");
@@ -300,6 +317,21 @@ export function ContinuousNotebook(props: Props) {
     if(v)viewportSize.current={width:v.clientWidth,height:v.clientHeight};
     rememberPosition();
   }, [zoom, note.pages]);
+  useLayoutEffect(()=>{
+    const v=viewport.current;
+    if(!v||props.settingsOpen||previousDirection.current===props.direction)return;
+    previousDirection.current=props.direction;
+    motion.current?.stop();
+    const saved=viewPosition.current;
+    if(saved){
+      const restored=restoreNoteView(note.pages,saved,v.clientWidth,props.direction,v.clientHeight);
+      v.scrollLeft=restored.left;v.scrollTop=restored.top;
+      onActive(restored.pageId);
+    }
+    scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
+    viewportSize.current={width:v.clientWidth,height:v.clientHeight};
+    rememberPosition();
+  },[props.direction,props.settingsOpen]);
   useEffect(()=>{
     const leave=()=>persistPosition(viewport.current),visibility=()=>{if(window.document.visibilityState==="hidden")leave();};
     const beforeAction=()=>capturePosition();
@@ -341,13 +373,11 @@ export function ContinuousNotebook(props: Props) {
         (e) => e.dataset.pageId === props.jump.id,
       );
       if (page) {
-        const top =
-          v.scrollTop +
-          page.getBoundingClientRect().top -
-          v.getBoundingClientRect().top -
-          16;
-        if (motion.current) motion.current.easeTo(v.scrollLeft, top);
-        else v.scrollTop = top;
+        const rect=page.getBoundingClientRect(),area=v.getBoundingClientRect();
+        const left=horizontal?v.scrollLeft+rect.left-area.left-16:v.scrollLeft;
+        const top=horizontal?v.scrollTop:v.scrollTop+rect.top-area.top-16;
+        if (motion.current) motion.current.easeTo(left,top);
+        else {v.scrollLeft=left;v.scrollTop=top;}
         scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
       }
     });
@@ -373,24 +403,26 @@ export function ContinuousNotebook(props: Props) {
     props.onWriting(drawing.current.size > 0);
   }
   function scroll() {
-    if (viewport.current) scrollPosition.current={left:viewport.current.scrollLeft,top:viewport.current.scrollTop};
+    const v=viewport.current;
+    if(!v||!v.clientWidth||!v.clientHeight)return;
+    scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
     rememberPosition();
     if(pinchAnchor.current)return;
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
       const v = viewport.current;
-      if (!v || drawing.current.size || pinchAnchor.current) return;
-      const y =
-        v.getBoundingClientRect().top + Math.min(v.clientHeight * 0.3, 150);
-      const pages = [...v.querySelectorAll<HTMLElement>("[data-page-id]")];
-      const active =
-        pages.find((e) => e.getBoundingClientRect().bottom > y) || pages.at(-1);
+      if (!v?.clientWidth || drawing.current.size || pinchAnchor.current) return;
+      const across=latest.current.direction==="horizontal",area=v.getBoundingClientRect();
+      const edge=across?area.left:area.top;
+      const probe=edge+Math.min((across?v.clientWidth:v.clientHeight)*0.3,150);
+      const pages=[...v.querySelectorAll<HTMLElement>("[data-page-id]")];
+      const active=pages.find(e=>e.getBoundingClientRect()[across?"right":"bottom"]>probe)||pages.at(-1);
       if (active?.dataset.pageId) onActive(active.dataset.pageId);
     });
   }
   function down(e: RPointerEvent<HTMLDivElement>) {
-    if (drawing.current.size) return;
+    if (drawing.current.size || e.button===2) return;
     if (e.pointerType !== "touch" && props.tool !== "hand" && e.button !== 1)
       return;
     motion.current?.stop();
@@ -412,7 +444,7 @@ export function ContinuousNotebook(props: Props) {
     pinchAnchor.current=null;
     if(current&&touches.current.size>=2){
       const r=v.getBoundingClientRect();
-      pinchAnchor.current={zoom:liveZoom.current,left:v.scrollLeft,top:v.scrollTop,x:current.x-r.left,y:current.y-r.top,distance:Math.max(1,current.distance),viewportWidth:v.clientWidth};
+      pinchAnchor.current={zoom:liveZoom.current,left:v.scrollLeft,top:v.scrollTop,x:current.x-r.left,y:current.y-r.top,distance:Math.max(1,current.distance),viewportWidth:v.clientWidth,viewportHeight:v.clientHeight};
       v.classList.add("zooming");
     }
   }
@@ -428,10 +460,11 @@ export function ContinuousNotebook(props: Props) {
       gesture.current=current;return;
     }
     if (prev) {
-      const dy = y - prev.y,
-        max = Math.max(0, v.scrollHeight - v.clientHeight),
-        before = v.scrollTop;
-      v.scrollLeft -= x - prev.x;
+      const dx=x-prev.x,dy=y-prev.y;
+      const advance=horizontal?dx:dy,cross=horizontal?dy:dx;
+      const max=Math.max(0,horizontal?v.scrollWidth-v.clientWidth:v.scrollHeight-v.clientHeight);
+      const before=horizontal?v.scrollLeft:v.scrollTop;
+      v.scrollLeft -= dx;
       v.scrollTop -= dy;
       rememberPosition();
       const dt = Math.max(1, e.timeStamp - velocity.current.time);
@@ -441,11 +474,12 @@ export function ContinuousNotebook(props: Props) {
         time: e.timeStamp,
       };
       if (points.length === 1 && !swipe.current.multi) {
-        if (dy < 0 && v.scrollTop >= max - 3)
-          swipe.current.distance += Math.max(0, -dy - (max - before));
-        else if (dy > 0)
-          swipe.current.distance = Math.max(0, swipe.current.distance - dy);
-        if (Math.abs(x - prev.x) > Math.abs(dy) * 2) swipe.current.distance = 0;
+        const offset=horizontal?v.scrollLeft:v.scrollTop;
+        if (advance<0&&offset>=max-3)
+          swipe.current.distance+=Math.max(0,-advance-(max-before));
+        else if(advance>0)
+          swipe.current.distance=Math.max(0,swipe.current.distance-advance);
+        if(Math.abs(cross)>Math.abs(advance)*2)swipe.current.distance=0;
         setPull(swipe.current.distance);
       }
     }
@@ -457,7 +491,7 @@ export function ContinuousNotebook(props: Props) {
     const v = viewport.current!,
       add = shouldAddPage(
         true,
-        v.scrollTop + v.clientHeight >= v.scrollHeight - 3,
+        horizontal ? v.scrollLeft+v.clientWidth>=v.scrollWidth-3 : v.scrollTop+v.clientHeight>=v.scrollHeight-3,
         swipe.current.distance,
         e.type !== "pointerup",
         swipe.current.multi,
@@ -482,7 +516,7 @@ export function ContinuousNotebook(props: Props) {
   return (
     <div
       className={
-        "viewport continuous-viewport " +
+        "viewport continuous-viewport " + (horizontal?"horizontal ":"") +
         (props.tool === "hand" ? "panning" : "")
       }
       ref={viewport}
@@ -496,7 +530,10 @@ export function ContinuousNotebook(props: Props) {
     >
       <div
         className="continuous-stack"
-        style={{
+        style={horizontal?{
+          height:`calc(${maxPageHeight}px * var(--notebook-zoom, ${zoom}) + 120px)`,
+          "--last-page-width":`calc(${note.pages.at(-1)?.width??0}px * var(--notebook-zoom, ${zoom}))`,
+        } as CSSProperties:{
           width: `calc(${maxPageWidth}px * var(--notebook-zoom, ${zoom}) + 96px)`,
         }}
       >
@@ -521,7 +558,7 @@ export function ContinuousNotebook(props: Props) {
         >
           {pull >= 90
             ? "離して新しいページを追加"
-            : "さらに上へスワイプしてページを追加"}
+            : `さらに${horizontal?"左":"上"}へスワイプしてページを追加`}
           <progress max={90} value={Math.min(90, pull)} />
         </div>
       )}

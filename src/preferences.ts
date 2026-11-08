@@ -1,4 +1,6 @@
 import {defaultShortcuts,readShortcuts,type ShortcutMap} from "./shortcuts";
+import {SHAPE_HOLD_MS,MAX_SHAPE_HOLD_MS} from "./shapeHold";
+import type {ScrollDirection} from "./scrolling";
 import type {SelectionButtonAction} from "./penInput";
 export type BuiltinPenId = "pen1" | "pen2" | "pen3" | "marker";
 export type PenId = BuiltinPenId | `custom-${string}`;
@@ -18,6 +20,8 @@ export type Preferences = {
   selectionButton:SelectionButtonAction;
   eraserButton:SelectionButtonAction;
   shortcuts:ShortcutMap;
+  shapeHoldMs:number;
+  scrollDirection:ScrollDirection;
   deletedPens?: BuiltinPenId[];
   scratchErase: boolean;
   pagesCollapsed:boolean;
@@ -32,6 +36,7 @@ export type Preferences = {
 };
 export const defaultPreferences = (): Preferences => ({
   selectionButton:"lasso",eraserButton:"eraser",shortcuts:defaultShortcuts(),
+  shapeHoldMs:SHAPE_HOLD_MS, scrollDirection:"vertical",
   eraserMode: "stroke", scratchErase: false, pagesCollapsed:false,
   theme: "system", accent: "green", paperColor: "auto", paperPattern: "grid",
   pens: {
@@ -49,6 +54,8 @@ export function readPreferences(value: unknown): Preferences {
   if(v.selectionButton==="eraser"||v.selectionButton==="lasso")base.selectionButton=v.selectionButton;
   if(v.eraserButton==="eraser"||v.eraserButton==="lasso")base.eraserButton=v.eraserButton;
   base.shortcuts=readShortcuts(v.shortcuts);
+  if(typeof v.shapeHoldMs==="number"&&Number.isFinite(v.shapeHoldMs)&&v.shapeHoldMs>=0&&v.shapeHoldMs<=MAX_SHAPE_HOLD_MS)base.shapeHoldMs=Math.round(v.shapeHoldMs/100)*100;
+  if(v.scrollDirection==="horizontal")base.scrollDirection=v.scrollDirection;
   const legacyCorrection=typeof v.shapeCorrection === "boolean"?v.shapeCorrection:true;
   for(const p of Object.values(base.pens))p.shapeCorrection=legacyCorrection;
   if(typeof v.pagesCollapsed === "boolean")base.pagesCollapsed=v.pagesCollapsed;

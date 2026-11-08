@@ -1,6 +1,6 @@
 import type {Stroke} from "./model";
 import {correctShape} from "./shapes";
-export const SHAPE_HOLD_MS=300,SHAPE_HOLD_SLOP=3;
+export const SHAPE_HOLD_MS=300,MAX_SHAPE_HOLD_MS=2000,SHAPE_HOLD_SLOP=3;
 export class EndpointHold {
   private anchor:{x:number;y:number;time:number}|null=null;
   endpointCount=1;
@@ -9,12 +9,13 @@ export class EndpointHold {
     if(!this.anchor||Math.hypot(x-this.anchor.x,y-this.anchor.y)>SHAPE_HOLD_SLOP){this.anchor={x,y,time};this.endpointCount=count;return true;}
     return false;
   }
-  remaining(time:number){return this.anchor?Math.max(0,this.anchor.time+SHAPE_HOLD_MS-time):Infinity;}
-  ready(x:number,y:number,time:number){return !!this.anchor&&Math.hypot(x-this.anchor.x,y-this.anchor.y)<=SHAPE_HOLD_SLOP&&time-this.anchor.time>=SHAPE_HOLD_MS;}
+  remaining(time:number,delay=SHAPE_HOLD_MS){return this.anchor?Math.max(0,this.anchor.time+delay-time):Infinity;}
+  ready(x:number,y:number,time:number,delay=SHAPE_HOLD_MS){return !!this.anchor&&Math.hypot(x-this.anchor.x,y-this.anchor.y)<=SHAPE_HOLD_SLOP&&time-this.anchor.time>=delay;}
   reset(){this.anchor=null;this.endpointCount=1;}
 }
-export function correctHeldShape(stroke:Stroke,references:Stroke[],hold:EndpointHold,release:{clientX:number;clientY:number;timeStamp:number}){
-  if(!hold.ready(release.clientX,release.clientY,release.timeStamp))return stroke;
+export function correctHeldShape(stroke:Stroke,references:Stroke[],hold:EndpointHold,release:{clientX:number;clientY:number;timeStamp:number},delay=SHAPE_HOLD_MS){
+  if(delay===0)return correctShape(stroke,references);
+  if(!hold.ready(release.clientX,release.clientY,release.timeStamp,delay))return stroke;
   return recognizeHeldShape(stroke,references,hold.endpointCount);
 }
 export function recognizeHeldShape(stroke:Stroke,references:Stroke[],endpointCount:number){

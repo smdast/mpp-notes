@@ -88,10 +88,9 @@ export function Library({
         >
           <PanelLeft size={19} />
         </button>
-        <div>
-          <span className="eyebrow">MY LIBRARY</span>
+        <div className="library-title">
+          <img src="./icon.svg" width="28" height="28" alt=""/>
           <h1>ノート管理</h1>
-          <p>ノートを整理して、考えたい一冊を開く。</p>
         </div>
         <div>
           {themeControl}

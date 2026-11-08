@@ -61,7 +61,7 @@ export function FolderNav({
             setError("");
           }}
         >
-          <FolderPlus size={16} />
+          <FolderPlus size={20} />
         </button>
       </div>
       <div className="folder-list">
@@ -74,7 +74,7 @@ export function FolderNav({
             key={f.id}
             title={f.id === "*" ? f.name : displayPath(f.id) || "未分類"}
             style={{
-              paddingLeft: 8 + Math.max(0, f.id.split("/").length - 1) * 14,
+              paddingLeft: 12 + Math.min(5, f.id.split("/").length - 1) * 12,
             }}
             className={selected === f.id ? "selected" : ""}
             onClick={() => {
@@ -82,7 +82,7 @@ export function FolderNav({
               setConfirm(false);
             }}
           >
-            <Folder size={14} />
+            <Folder size={19} />
             <span>{f.name}</span>
             <small>
               {
@@ -111,11 +111,11 @@ export function FolderNav({
               setError("");
             }}
           >
-            <Pencil size={12} />
+            <Pencil size={16} />
             名前変更
           </button>
           <button title="フォルダーを削除" onClick={() => setConfirm(true)}>
-            <Trash2 size={12} />
+            <Trash2 size={16} />
             削除
           </button>
         </div>
