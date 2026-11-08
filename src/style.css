@@ -1242,8 +1242,8 @@ main {
 .library-header > div:first-of-type {
   flex: 1;
 }
-.library-title,.settings-title { display: flex; align-items: center; gap: 9px; }
-.library-title img,.settings-title img,.library-back img { flex-shrink: 0; }
+.settings-title { display: flex; align-items: center; gap: 9px; }
+.settings-title img,.library-back img { flex-shrink: 0; }
 .library-header h1 {
   font-size: 26px;
   font-weight: 500;
@@ -3094,3 +3094,24 @@ main {
 }
 .shape-delay > span { display: flex; justify-content: space-between; }
 .shape-delay input { width: 100%; min-height: 28px; accent-color: var(--t-accent); }
+
+.auto-pen-colors {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+}
+.auto-pen-colors label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  font-size: 11px;
+}
+.auto-pen-colors input {
+  width: 36px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--t-border,var(--ui-d8dfd2,#d8dfd2));
+  border-radius: 5px;
+  cursor: pointer;
+}

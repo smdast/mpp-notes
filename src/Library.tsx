@@ -88,8 +88,7 @@ export function Library({
         >
           <PanelLeft size={19} />
         </button>
-        <div className="library-title">
-          <img src="./icon.svg" width="28" height="28" alt=""/>
+        <div>
           <h1>ノート管理</h1>
         </div>
         <div>

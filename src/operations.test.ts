@@ -1,3 +1,4 @@
+import {strokeStartColor} from "./paper";
 import "fake-indexeddb/auto";
 import {it,expect} from "vitest";
 import {penButtonTool,penInContact} from "./penInput";
@@ -58,4 +59,26 @@ it("persists horizontal scrolling and zero delay while defaulting older or inval
   expect(readPreferences({shapeHoldMs:Infinity,scrollDirection:"diagonal"})).toMatchObject({shapeHoldMs:300,scrollDirection:"vertical"});
   await saveSetting("operation-display-test",{...defaultPreferences(),shapeHoldMs:0,scrollDirection:"horizontal"});
   expect(readPreferences(await loadSetting("operation-display-test"))).toMatchObject({shapeHoldMs:0,scrollDirection:"horizontal"});
+});
+
+it("persists individual pen background colors even when the mode is off",async()=>{
+  const prefs=defaultPreferences();
+  prefs.pens.pen1.autoColor={enabled:false,onLight:"#103030",onDark:"#ffeedd"};
+  prefs.pens.pen2.autoColor={enabled:true,onLight:"#000000",onDark:"#ffffff"};
+  await saveSetting("auto-pen-color-test",prefs);
+  const restored=readPreferences(await loadSetting("auto-pen-color-test"));
+  expect(restored.pens.pen1.autoColor).toEqual(prefs.pens.pen1.autoColor);
+  expect(restored.pens.pen2.autoColor).toEqual(prefs.pens.pen2.autoColor);
+  expect(restored.pens.pen3.autoColor).toBeUndefined();
+  prefs.pens.pen1.autoColor.onLight="bad";
+  expect(readPreferences(prefs).pens.pen1.autoColor).toBeUndefined();
+});
+it("samples the background at the page-space start on a scaled canvas and blends transparent pixels",()=>{
+  const colors={enabled:true,onLight:"#111111",onDark:"#eeeeee"},page={width:100,height:200};
+  const getImageData=(x:number,y:number)=>({data:x===50&&y===75?[0,0,0,255]:[0,0,0,0]});
+  const canvas={width:200,height:300,getContext:()=>({getImageData})} as unknown as HTMLCanvasElement;
+  expect(strokeStartColor(colors,canvas,{x:25,y:50},page,"#fffefa")).toBe(colors.onDark);
+  expect(strokeStartColor(colors,canvas,{x:27,y:50},page,"#fffefa")).toBe(colors.onLight);
+  expect(strokeStartColor(colors,canvas,{x:27,y:50},page,"#1e2822")).toBe(colors.onDark);
+  expect(strokeStartColor(colors,null,{x:0,y:0},page,"#fffefa")).toBe(colors.onLight);
 });

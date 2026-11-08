@@ -6,7 +6,9 @@ export type BuiltinPenId = "pen1" | "pen2" | "pen3" | "marker";
 export type PenId = BuiltinPenId | `custom-${string}`;
 export type PenKind = "pen" | "marker";
 export type Theme = "system" | "light" | "dark";
+export type AutoPenColor = {enabled:boolean;onLight:string;onDark:string};
 export type PenSettings = {
+  autoColor?:AutoPenColor;
   kind?:PenKind;
   shapeCorrection?:boolean;
   dashed?: boolean;
@@ -75,6 +77,7 @@ export function readPreferences(value: unknown): Preferences {
       const kind=penKind(key,p),fallback=base.pens[key]||base.pens[kind==="marker"?"marker":"pen1"];
       base.pens[key] = {
         color:p.color,pressure:p.pressure,kind,
+        ...(validAutoPenColor(p.autoColor)?{autoColor:p.autoColor}:{}),
         width: Math.round(p.width * 5) / 5,
         shapeCorrection:typeof p.shapeCorrection === "boolean"?p.shapeCorrection:legacyCorrection,
         dashed: p.dashed === true,
@@ -88,6 +91,12 @@ export function readPreferences(value: unknown): Preferences {
   if(!available.length){base.deletedPens=base.deletedPens?.filter(id=>id!=="pen1");available=["pen1"];}
   base.activePen=isPenId(v.activePen)&&available.includes(v.activePen)?v.activePen:available[0];
   return base;
+}
+function validAutoPenColor(value:unknown):value is AutoPenColor {
+  if(!value||typeof value!=="object")return false;
+  const {enabled,onLight,onDark}=value as Partial<AutoPenColor>;
+  return typeof enabled==="boolean"&&typeof onLight==="string"&&typeof onDark==="string"&&
+    /^#[\da-f]{6}$/i.test(onLight)&&/^#[\da-f]{6}$/i.test(onDark);
 }
 export const pressureValue = (value: number, enabled: boolean) =>
   enabled ? Math.max(0.05, Math.min(1, value)) : 0.75 / 0.95;

@@ -1,5 +1,6 @@
-import {it,expect} from "vitest";
-import {horizontalZoomPosition,touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
+import {ScrollMotion} from "./motion";
+import {it,expect,vi} from "vitest";
+import {pageAfterSwipe,horizontalZoomPosition,touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
 const pages=[{height:1123},{height:842},{height:1123}];
 it("starts at the actual two-finger midpoint without a first-move pan or zoom",()=>{
   const first={x:170,y:220},second={x:470,y:420};
@@ -64,4 +65,33 @@ it("keeps a point on a mixed-size page under the pinch midpoint in a horizontal 
   const next=horizontalZoomPosition(landscapePages,anchor,to,point,588);
   expect(pageLeft(to)+200*to-next.left).toBeCloseTo(point.x);
   expect(paperCentre(to,588)-30*to-next.top).toBeCloseTo(point.y);
+});
+
+it("turns exactly one page per horizontal swipe and ignores short movements",()=>{
+  expect(pageAfterSwipe(2,-47,5)).toBe(2);
+  expect(pageAfterSwipe(2,-48,5)).toBe(3);
+  expect(pageAfterSwipe(2,-1200,5)).toBe(3);
+  expect(pageAfterSwipe(2,1200,5)).toBe(1);
+  expect(pageAfterSwipe(0,1200,5)).toBe(0);
+  expect(pageAfterSwipe(4,-1200,5)).toBe(4);
+});
+
+it("settles smooth paging at the exact target despite rounded browser scroll offsets",()=>{
+  let time=performance.now(),nextFrame:FrameRequestCallback|undefined,left=0;
+  const viewport={
+    get scrollLeft(){return left;},set scrollLeft(value:number){left=Math.round(value);},
+    scrollTop:0,clientWidth:800,scrollWidth:2400,clientHeight:600,scrollHeight:600,
+    addEventListener(){},removeEventListener(){},
+  } as unknown as HTMLElement;
+  vi.stubGlobal("document",{addEventListener(){},removeEventListener(){}});
+  vi.stubGlobal("requestAnimationFrame",(frame:FrameRequestCallback)=>{nextFrame=frame;return 1;});
+  vi.stubGlobal("cancelAnimationFrame",()=>{nextFrame=undefined;});
+  try{
+    const motion=new ScrollMotion(viewport,()=>false,()=>"horizontal");
+    motion.easeTo(590,0);
+    for(let i=0;i<80&&nextFrame;i++){const frame=nextFrame;nextFrame=undefined;time+=16;frame(time);}
+    expect(viewport.scrollLeft).toBe(590);
+    expect(nextFrame).toBeUndefined();
+    motion.destroy();
+  }finally{vi.unstubAllGlobals();}
 });

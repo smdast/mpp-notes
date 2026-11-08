@@ -11,7 +11,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Note, Page, Stroke } from "./model";
 import { ScrollMotion } from "./motion";
 import { pagePaperColor } from "./paper";
-import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, horizontalZoomPosition, type PinchAnchor, type ScrollDirection } from "./scrolling";
+import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, horizontalZoomPosition, pageAfterSwipe, PAGE_START, type PinchAnchor, type ScrollDirection } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
@@ -21,8 +21,14 @@ import {createPortal} from "react-dom";
 import {transferSelection,type SelectionDrag,type IncomingSelection} from "./selectionTransfer";
 import type {PageChange} from "./notebookHistory";
 import type {ShortcutMap} from "./shortcuts";
+import type {AutoPenColor} from "./preferences";
 import type {SelectionButtonAction} from "./penInput";
 import {readNoteView,captureNoteView,restoreNoteView,saveNoteView,type NoteView} from "./noteView";
+type PageSwipe = {
+  x:number;y:number;left:number;index:number;starts:number[];
+  axis?:"horizontal"|"vertical";
+  deltaX:number;
+};
 type Props = {
   selectionButton:SelectionButtonAction;
   eraserButton:SelectionButtonAction;
@@ -36,6 +42,7 @@ type Props = {
   setZoom: (zoom: number) => void;
   tool: Tool;
   color: string;
+  autoColor?:AutoPenColor;
   width: number;
   pressure: boolean;
   dotted: boolean;
@@ -117,6 +124,7 @@ function PageSlot({
           zoom={props.zoom}
           tool={props.tool}
           color={props.color}
+          autoColor={props.autoColor}
           width={props.width}
           pressure={props.pressure}
           dotted={props.dotted}
@@ -167,6 +175,7 @@ export function ContinuousNotebook(props: Props) {
     gesture = useRef<{ x: number; y: number; distance: number } | null>(null),
     swipe = useRef({ distance: 0, multi: false }),
     frame = useRef(0);
+  const pageSwipe=useRef<PageSwipe|null>(null);
   const { note, zoom, onActive, onError } = props;
   const horizontal=props.direction==="horizontal";
   const previousDirection=useRef(props.direction);
@@ -294,7 +303,7 @@ export function ContinuousNotebook(props: Props) {
       motion.current?.stop();
       if(committedZoom.current!==zoom){
         cancelAnimationFrame(zoomFrame.current);zoomFrame.current=0;pendingZoom.current=null;
-        pinchAnchor.current=null;gesture.current=null;touches.current.clear();
+        pinchAnchor.current=null;gesture.current=null;touches.current.clear();pageSwipe.current=null;
         const from=liveZoom.current,position=scrollPosition.current,size=viewportSize.current;
         const ax=(size.width||v.clientWidth)/2,ay=(size.height||v.clientHeight)/2;
         v.style.setProperty("--notebook-zoom",String(zoom));
@@ -374,8 +383,8 @@ export function ContinuousNotebook(props: Props) {
       );
       if (page) {
         const rect=page.getBoundingClientRect(),area=v.getBoundingClientRect();
-        const left=horizontal?v.scrollLeft+rect.left-area.left-16:v.scrollLeft;
-        const top=horizontal?v.scrollTop:v.scrollTop+rect.top-area.top-16;
+        const left=horizontal?v.scrollLeft+rect.left-area.left-PAGE_START:v.scrollLeft;
+        const top=horizontal?v.scrollTop:v.scrollTop+rect.top-area.top-PAGE_START;
         if (motion.current) motion.current.easeTo(left,top);
         else {v.scrollLeft=left;v.scrollTop=top;}
         scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
@@ -397,6 +406,7 @@ export function ContinuousNotebook(props: Props) {
       finishZoom();
       drawing.current.add(id);
       touches.current.clear();
+      pageSwipe.current=null;
       gesture.current = null;
       setPull(0);
     } else drawing.current.delete(id);
@@ -415,7 +425,7 @@ export function ContinuousNotebook(props: Props) {
       if (!v?.clientWidth || drawing.current.size || pinchAnchor.current) return;
       const across=latest.current.direction==="horizontal",area=v.getBoundingClientRect();
       const edge=across?area.left:area.top;
-      const probe=edge+Math.min((across?v.clientWidth:v.clientHeight)*0.3,150);
+      const probe=edge+(across?PAGE_START+2:Math.min(v.clientHeight*0.3,150));
       const pages=[...v.querySelectorAll<HTMLElement>("[data-page-id]")];
       const active=pages.find(e=>e.getBoundingClientRect()[across?"right":"bottom"]>probe)||pages.at(-1);
       if (active?.dataset.pageId) onActive(active.dataset.pageId);
@@ -432,10 +442,21 @@ export function ContinuousNotebook(props: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.current.size > 1) {
+      pageSwipe.current=null;
       swipe.current.multi = true;
       swipe.current.distance = 0;
       setPull(0);
-    } else swipe.current = { distance: 0, multi: e.pointerType !== "touch" };
+    } else {
+      swipe.current={distance:0,multi:e.pointerType!=="touch"};
+      if(horizontal&&e.pointerType==="touch"){
+        const v=e.currentTarget,edge=v.getBoundingClientRect().left,left=v.scrollLeft;
+        const starts=[...v.querySelectorAll<HTMLElement>("[data-page-id]")]
+          .map(slot=>left+slot.getBoundingClientRect().left-edge-PAGE_START);
+        const next=starts.findIndex(start=>start>left+2);
+        const index=next<0?starts.length-1:Math.max(0,next-1);
+        if(starts.length)pageSwipe.current={x:e.clientX,y:e.clientY,left,index,starts,deltaX:0};
+      }
+    }
     rebaseGesture();
   }
   function rebaseGesture() {
@@ -459,8 +480,26 @@ export function ContinuousNotebook(props: Props) {
       if(!zoomFrame.current)zoomFrame.current=requestAnimationFrame(flushZoom);
       gesture.current=current;return;
     }
+    const paged=pageSwipe.current;
+    if(paged){
+      paged.deltaX=x-paged.x;
+      const deltaY=y-paged.y;
+      if(!paged.axis&&Math.max(Math.abs(paged.deltaX),Math.abs(deltaY))>=12)
+        paged.axis=Math.abs(paged.deltaX)>Math.abs(deltaY)?"horizontal":"vertical";
+      if(!paged.axis)return;
+      if(paged.axis==="horizontal"){
+        const {starts,index,left,deltaX}=paged;
+        const first=starts[Math.max(0,index-1)],last=starts[Math.min(starts.length-1,index+1)];
+        v.scrollLeft=Math.min(Math.max(left,last),Math.max(Math.min(left,first),left-deltaX));
+        swipe.current.distance=index===starts.length-1?Math.max(0,-deltaX):0;
+        setPull(swipe.current.distance);
+        rememberPosition();
+        gesture.current=current;
+        return;
+      }
+    }
     if (prev) {
-      const dx=x-prev.x,dy=y-prev.y;
+      const dx=paged?0:x-prev.x,dy=y-prev.y;
       const advance=horizontal?dx:dy,cross=horizontal?dy:dx;
       const max=Math.max(0,horizontal?v.scrollWidth-v.clientWidth:v.scrollHeight-v.clientHeight);
       const before=horizontal?v.scrollLeft:v.scrollTop;
@@ -473,7 +512,7 @@ export function ContinuousNotebook(props: Props) {
         y: velocity.current.y * 0.4 + (-dy / dt) * 0.6,
         time: e.timeStamp,
       };
-      if (points.length === 1 && !swipe.current.multi) {
+      if (!horizontal && points.length === 1 && !swipe.current.multi) {
         const offset=horizontal?v.scrollLeft:v.scrollTop;
         if (advance<0&&offset>=max-3)
           swipe.current.distance+=Math.max(0,-advance-(max-before));
@@ -488,12 +527,15 @@ export function ContinuousNotebook(props: Props) {
   function end(e: RPointerEvent<HTMLDivElement>) {
     if (!touches.current.has(e.pointerId)) return;
     flushZoom();
-    const v = viewport.current!,
-      add = shouldAddPage(
+    const v=viewport.current!;
+    const paged=pageSwipe.current;
+    pageSwipe.current=null;
+    const cancelled=e.type!=="pointerup";
+    const add = shouldAddPage(
         true,
-        horizontal ? v.scrollLeft+v.clientWidth>=v.scrollWidth-3 : v.scrollTop+v.clientHeight>=v.scrollHeight-3,
+        horizontal ? !!paged&&paged.index===paged.starts.length-1 : v.scrollTop+v.clientHeight>=v.scrollHeight-3,
         swipe.current.distance,
-        e.type !== "pointerup",
+        cancelled,
         swipe.current.multi,
       );
     touches.current.delete(e.pointerId);
@@ -504,6 +546,10 @@ export function ContinuousNotebook(props: Props) {
     if (add) {
       touches.current.clear();
       props.onAddPage();
+    } else if(paged?.axis==="horizontal"){
+      const target=cancelled?paged.left:paged.starts[pageAfterSwipe(paged.index,paged.deltaX,paged.starts.length)];
+      if(motion.current)motion.current.easeTo(target,v.scrollTop);
+      else v.scrollLeft=target;
     } else if (
       e.type === "pointerup" &&
       !swipe.current.multi &&

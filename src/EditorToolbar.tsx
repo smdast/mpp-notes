@@ -1,11 +1,11 @@
 import {useState,useRef,useEffect,useLayoutEffect} from "react";
 import {createPortal} from "react-dom";
 import {useDismiss} from "./useDismiss";
-import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2 } from "lucide-react";
+import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2, Contrast } from "lucide-react";
 import type {LucideIcon} from "lucide-react";
 import type { Tool } from "./Sheet";
 import type { EraserMode } from "./editing";
-import { penColor } from "./paper";
+import { defaultAutoPenColor, penColor } from "./paper";
 import {shortcutTitle} from "./shortcuts";
 import {penIds} from "./preferences";
 import type { Preferences, PenId, PenKind, PenSettings } from "./preferences";
@@ -21,6 +21,7 @@ type Props = {
 export function EditorToolbar(props: Props) {
   const {tool, preferences, color, colors, dark} = props;
   const settings = preferences.pens[preferences.activePen];
+  const autoColor=settings.autoColor??defaultAutoPenColor(settings,preferences.activePen);
   const drawing = tool === "pen" || tool === "marker";
   const [open,setOpen]=useState(false),[position,setPosition]=useState({left:12,top:100});
   const panel=useRef<HTMLDivElement>(null),anchor=useRef<HTMLButtonElement|null>(null);
@@ -68,10 +69,13 @@ export function EditorToolbar(props: Props) {
       {open && (drawing || tool === "eraser") && createPortal(<div ref={panel} id="tool-settings" role="dialog" aria-label={drawing?(tool==="marker"?"蛍光ペンの設定":"ペンの設定"):"消しゴムの設定"} className="tool-settings-popover" style={{...position,maxHeight:`calc(100dvh - ${position.top+12}px)`}}>
         <header><strong>{drawing?(tool==="marker"?"蛍光ペンの設定":"ペンの設定"):"消しゴムの設定"}</strong><button aria-label="ツール設定を閉じる" onClick={()=>{setOpen(false);anchor.current?.focus();}}><X size={18}/></button></header>
       {drawing && <div className="context-controls" aria-label="ペンの設定">
-        <div className="colors">
+        <SettingSwitch label="自動切り替え" Icon={Contrast} checked={autoColor.enabled} onChange={enabled=>props.onSettings({autoColor:{...autoColor,enabled}})}/>
+        {autoColor.enabled?<div className="auto-pen-colors" role="group" aria-label="背景別のペン色">
+          {(["onLight","onDark"] as const).map(key=><label key={key}>{key==="onLight"?"明るい背景":"暗い背景"}<input type="color" value={autoColor[key]} onInput={e=>props.onSettings({autoColor:{...autoColor,[key]:e.currentTarget.value}})}/></label>)}
+        </div>:<div className="colors">
           {colors.map((c) => <button key={c} title={`色 ${c}`} aria-pressed={color === c} className={"swatch " + (color === c ? "chosen" : "")} style={{"--swatch":c} as React.CSSProperties} onClick={() => props.onColor(c)}/>)}
           <label className="custom-color" title="色を選ぶ"><Plus size={13}/><input type="color" aria-label="カスタム色" value={color} onChange={(e) => props.onColor(e.target.value)}/></label>
-        </div>
+        </div>}
         <label className="size-slider pen-size-slider"><span>太さ</span><input type="range" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(e) => props.onSettings({width:Number(e.target.value) / 5})}/><output>{Math.round(settings.width * 5)}</output></label>
         <div className="line-styles" role="group" aria-label="線の種類">
           {([{id:"solid",label:"実線"},{id:"dotted",label:"点線"},{id:"dashed",label:"破線"}] as const).map(({id,label}) =>
@@ -80,7 +84,7 @@ export function EditorToolbar(props: Props) {
             </button>)}
         </div>
         <SettingSwitch label="筆圧検知" text="筆圧" Icon={Gauge} checked={settings.pressure} onChange={pressure=>props.onSettings({pressure})}/>
-        <SettingSwitch label="図形補正" hint="終点で約0.3秒止めると図形を整えます。離すと確定します" Icon={Shapes} checked={settings.shapeCorrection!==false} onChange={shapeCorrection=>props.onSettings({shapeCorrection})}/>
+        <SettingSwitch label="図形補正" hint="補正までの時間は操作設定で変更できます" Icon={Shapes} checked={settings.shapeCorrection!==false} onChange={shapeCorrection=>props.onSettings({shapeCorrection})}/>
         {tool === "pen" && <SettingSwitch label="こすって消去" Icon={ScanLine} checked={preferences.scratchErase} onChange={props.onScratchErase}/>}
         <button className="delete-pen" disabled={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1} title={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1?"最後の1本は削除できません":undefined} onClick={()=>{setOpen(false);props.onDeletePen();}}><Trash2 size={16}/>{tool==="marker"?"蛍光ペンを削除":"ペンを削除"}</button>
       </div>}

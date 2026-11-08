@@ -775,6 +775,7 @@ function App() {
                     setZoom={setZoom}
                     tool={tool}
                     color={color}
+                    autoColor={preferences.pens[preferences.activePen].autoColor}
                     width={width}
                     pressure={pressure}
                     dotted={!!dotted}

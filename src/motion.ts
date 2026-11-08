@@ -10,6 +10,8 @@ export class ScrollMotion {
   private previous = 0;
   private targetX = 0;
   private targetY = 0;
+  private positionX = 0;
+  private positionY = 0;
   private vx = 0;
   private vy = 0;
   private kind: "ease" | "inertia" = "ease";
@@ -72,6 +74,10 @@ export class ScrollMotion {
       this.element.scrollTop = this.targetY;
       return;
     }
+    if(!this.frame||this.kind!=="ease"){
+      this.positionX=this.element.scrollLeft;
+      this.positionY=this.element.scrollTop;
+    }
     this.kind = "ease";
     this.start();
   }
@@ -95,11 +101,14 @@ export class ScrollMotion {
     this.previous = now;
     const e = this.element;
     if (this.kind === "ease") {
-      e.scrollLeft = smoothStep(e.scrollLeft, this.targetX, dt);
-      e.scrollTop = smoothStep(e.scrollTop, this.targetY, dt);
+      // Accumulate fractional steps even when the browser rounds scroll offsets.
+      this.positionX=smoothStep(this.positionX,this.targetX,dt);
+      this.positionY=smoothStep(this.positionY,this.targetY,dt);
+      e.scrollLeft=this.positionX;
+      e.scrollTop=this.positionY;
       if (
-        Math.abs(e.scrollLeft - this.targetX) < 1 &&
-        Math.abs(e.scrollTop - this.targetY) < 1
+        Math.abs(this.positionX-this.targetX)<0.5 &&
+        Math.abs(this.positionY-this.targetY)<0.5
       ) {
         e.scrollLeft = this.targetX;
         e.scrollTop = this.targetY;

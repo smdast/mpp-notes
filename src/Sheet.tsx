@@ -8,6 +8,8 @@ import {
   type PointerEvent as RPointerEvent,
 } from "react";
 import { drawPaper, drawStroke } from "./draw";
+import {strokeStartColor} from "./paper";
+import type {AutoPenColor} from "./preferences";
 import { pagePoint, uid, type Page, type Point, type Stroke } from "./model";
 import {
   erase,
@@ -52,6 +54,7 @@ type Props = {
   zoom: number;
   tool: Tool;
   color: string;
+  autoColor?:AutoPenColor;
   width: number;
   eraserMode: EraserMode;
   eraserSize: number;
@@ -80,6 +83,7 @@ export function Sheet({
   zoom,
   tool,
   color,
+  autoColor,
   width,
   eraserMode,
   eraserSize,
@@ -585,7 +589,7 @@ export function Sheet({
       current.current = {
         id: uid(),
         tool: action === "marker" ? "marker" : "pen",
-        color,
+        color:autoColor?.enabled?strokeStartColor(autoColor,paper.current,p,page,paperColor):color,
         pressure,
         dotted,
         dashed,

@@ -1,6 +1,11 @@
 import type { Page } from "./model";
 export type ScrollDirection = "vertical" | "horizontal";
 export const PAGE_START = 16, PAGE_LABEL = 24, PAGE_GAP = 34;
+export const PAGE_SWIPE_THRESHOLD=48;
+export function pageAfterSwipe(start:number,deltaX:number,pageCount:number){
+  const offset=Math.abs(deltaX)>=PAGE_SWIPE_THRESHOLD?-Math.sign(deltaX):0;
+  return Math.max(0,Math.min(pageCount-1,start+offset));
+}
 export const MIN_ZOOM = 0.25;
 export const MAX_ZOOM = 8;
 export const clampZoom = (zoom: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
