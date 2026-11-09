@@ -1,6 +1,6 @@
 import type {Stroke} from "./model";
 import {correctShape} from "./shapes";
-export const SHAPE_HOLD_MS=300,MAX_SHAPE_HOLD_MS=2000,SHAPE_HOLD_SLOP=3;
+export const SHAPE_HOLD_MS=300,MAX_SHAPE_HOLD_MS=2000,SHAPE_HOLD_SLOP=6;
 export class EndpointHold {
   private anchor:{x:number;y:number;time:number}|null=null;
   endpointCount=1;

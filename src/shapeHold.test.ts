@@ -17,8 +17,8 @@ it("requires a new endpoint pause after continuing from a mid-stroke pause",()=>
 });
 it("accepts small endpoint jitter without allowing repeated samples to distort recognition",()=>{
   const hold=moved(),stroke=line();
-  for(let i=1;i<=150;i++){const x=100+(i%2?.3:-.3),y=5+(i%2?.2:-.2);stroke.points.push({x,y,p:.7});hold.move(x,y,90+i*5,stroke.points.length);}
-  expect(correctHeldShape(stroke,[],hold,release(850,100.3,5.2)).shape).toBe("line");
+  for(let i=1;i<=150;i++){const x=100+(i%2?4.5:-4.5),y=5+(i%2?2:-2);stroke.points.push({x,y,p:.7});hold.move(x,y,90+i*5,stroke.points.length);}
+  expect(correctHeldShape(stroke,[],hold,release(850,106,5)).shape).toBe("line");
   expect(stroke.points).toHaveLength(153);
 });
 it("keeps unrecognized writing intact and rejects movement on release or a reset gesture",()=>{
@@ -30,9 +30,9 @@ it("keeps unrecognized writing intact and rejects movement on release or a reset
 it("the live preview countdown follows movement but ignores endpoint jitter",()=>{
   const hold=moved();
   expect(hold.remaining(300)).toBe(90);
-  expect(hold.move(101,6,310,4)).toBe(false);
+  expect(hold.move(104,8,310,4)).toBe(false);
   expect(hold.remaining(390)).toBe(0);
-  expect(hold.move(112,5,400,5)).toBe(true);
+  expect(hold.move(107,5,400,5)).toBe(true);
   expect(hold.remaining(405)).toBe(295);
   expect(hold.endpointCount).toBe(5);
 });

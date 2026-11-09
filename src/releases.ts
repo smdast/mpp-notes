@@ -2,7 +2,8 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
-  {version:"1.22.1",date:"2026-11-08",title:"貼り付けた画像の上でペン色を切り替え",changes:["ペン色の自動切り替えが挿入画像に対応。透明な部分では下に見える背景の明るさを使用"],commits:[]},
+  {version:"1.22.2",date:"2026-11-09",title:"図形補正の待機中に許容するペン先のズレを拡大",changes:["終点付近で画面上6pxまでのズレを許容し、手ぶれによる待ち時間の数え直しを減らす"],commits:[]},
+  {version:"1.22.1",date:"2026-11-08",title:"貼り付けた画像の上でペン色を切り替え",changes:["ペン色の自動切り替えが挿入画像に対応。透明な部分では下に見える背景の明るさを使用"],commits:["80f743e"]},
   {version:"1.22.0",date:"2026-11-08",title:"横スワイプのページ送りとペン色の自動切り替え",changes:["横スワイプで前後1ページに揃える","ペンごとに明るい背景と暗い背景の色を選び、書き始めの背景で切り替える","ノート管理の見出し横からアイコンを外す"],commits:["3a32325"]},
   {version:"1.21.0",date:"2026-11-08",title:"ページのスクロール方向と図形補正の待ち時間",changes:["操作設定で縦・横スクロールを選択","図形補正の待ち時間を調整。0秒はペンを離すと補正","ノートのヘッダーに同期状況を表示","アプリのロゴを統一し、フォルダーのタッチ領域を拡大。ブラウザーの右クリックメニューを抑止"],commits:["f06e19a"]},
   {version:"1.20.0",date:"2026-11-07",title:"描画中の図形補正と消しゴムボタンの設定",changes:["終点で約0.3秒止めると、ペンを離す前に補正結果を表示。そのまま離して確定し、動かすと筆記を続けられる","選択ボタンと消しゴムボタンを個別に、消去またはなげなわへ割り当て"],commits:["68b6bb0"]},
