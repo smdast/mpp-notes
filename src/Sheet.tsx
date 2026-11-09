@@ -30,6 +30,7 @@ import {EndpointHold,correctHeldShape,recognizeHeldShape,SHAPE_HOLD_MS} from "./
 import { isDarkColor } from "./paper";
 import { pressureValue } from "./preferences";
 import { SelectionPopup } from "./SelectionPopup";
+import {applyStrokeStyle,type StrokeStylePatch} from "./strokeStyle";
 import { cloneStrokes, decodeStrokes, editableTarget, localStrokes, rememberStrokes } from "./clipboard";
 import { imageStroke, prepareImages, loadInkImage } from "./images";
 import {StrokeIndex,strokeBounds,unionBounds,type Bounds} from "./spatial";
@@ -156,6 +157,13 @@ export function Sheet({
     onCommit(working.current);
     refreshSelection((v) => v + 1);
     paint();
+  }
+  function changeSelectionStyle(patch:StrokeStylePatch){
+    const strokes=applyStrokeStyle(page.strokes,selected.current,patch);
+    if(strokes===page.strokes)return;
+    working.current=strokes;
+    onCommit(strokes);
+    schedule();
   }
   function removeSelection() {
     if (!selected.current.size) return;
@@ -742,6 +750,7 @@ export function Sheet({
       {pdfLoading && <div className="page-loading">PDFを読み込み中…</div>}
       {isActive && selectionMode() && bounds && popupOpen && !editingSelection && (
         <SelectionPopup onDismiss={()=>setPopupOpen(false)} canvas={ink} bounds={bounds} zoom={zoom}
+          strokes={selectedStrokes().filter(stroke=>!stroke.image)} onStyle={changeSelectionStyle}
           onCopy={() => void copySelection()}
           onCut={() => void copySelection(true)}
           onDuplicate={() => insert(selectedStrokes())}

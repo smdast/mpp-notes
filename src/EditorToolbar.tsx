@@ -1,5 +1,7 @@
 import {useState,useRef,useEffect,useLayoutEffect} from "react";
 import {createPortal} from "react-dom";
+import {LineStylePicker} from "./LineStylePicker";
+import {lineFlags,lineStyle} from "./strokeStyle";
 import {useDismiss} from "./useDismiss";
 import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2, Contrast } from "lucide-react";
 import type {LucideIcon} from "lucide-react";
@@ -39,7 +41,6 @@ export function EditorToolbar(props: Props) {
     const update=()=>{const r=anchor.current?.getBoundingClientRect();if(r)setPosition({left:Math.max(12,Math.min(innerWidth-Math.min(304,innerWidth-24)-12,r.left)),top:r.bottom+12});};
     update();window.addEventListener("resize",update);window.addEventListener("scroll",update,true);return()=>{window.removeEventListener("resize",update);window.removeEventListener("scroll",update,true);};
   },[open]);
-  const style = settings.dashed ? "dashed" : settings.dotted ? "dotted" : "solid";
   return <div ref={root} className="toolbar editor-toolbar">
     <div className="history-tools" role="group" aria-label="編集操作">
       <button className="tool" title={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} aria-label={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} disabled={!props.canUndo} onClick={() => props.onUndo()}><Undo2 size={18}/></button>
@@ -77,12 +78,7 @@ export function EditorToolbar(props: Props) {
           <label className="custom-color" title="色を選ぶ"><Plus size={13}/><input type="color" aria-label="カスタム色" value={color} onChange={(e) => props.onColor(e.target.value)}/></label>
         </div>}
         <label className="size-slider pen-size-slider"><span>太さ</span><input type="range" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(e) => props.onSettings({width:Number(e.target.value) / 5})}/><output>{Math.round(settings.width * 5)}</output></label>
-        <div className="line-styles" role="group" aria-label="線の種類">
-          {([{id:"solid",label:"実線"},{id:"dotted",label:"点線"},{id:"dashed",label:"破線"}] as const).map(({id,label}) =>
-            <button key={id} title={label} aria-label={label} aria-pressed={style === id} onClick={() => props.onSettings({dotted:id === "dotted",dashed:id === "dashed"})}>
-              <svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M3 6H41" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={id === "dotted" ? "0.1 6" : id === "dashed" ? "9 6" : undefined}/></svg><span>{label}</span>
-            </button>)}
-        </div>
+        <LineStylePicker value={lineStyle(settings)} onChange={line=>props.onSettings(lineFlags(line))}/>
         <SettingSwitch label="筆圧検知" text="筆圧" Icon={Gauge} checked={settings.pressure} onChange={pressure=>props.onSettings({pressure})}/>
         <SettingSwitch label="図形補正" hint="補正までの時間は操作設定で変更できます" Icon={Shapes} checked={settings.shapeCorrection!==false} onChange={shapeCorrection=>props.onSettings({shapeCorrection})}/>
         {tool === "pen" && <SettingSwitch label="こすって消去" Icon={ScanLine} checked={preferences.scratchErase} onChange={props.onScratchErase}/>}
