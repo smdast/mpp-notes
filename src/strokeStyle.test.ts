@@ -1,5 +1,5 @@
 import {expect,it} from "vitest";
-import {applyStrokeStyle,lineStyle} from "./strokeStyle";
+import {applyStrokeStyle,lineStyle,strokeSize} from "./strokeStyle";
 import {newPage,type Stroke} from "./model";
 import {recordPages,travelPages} from "./notebookHistory";
 
@@ -18,16 +18,17 @@ it("changes only selected ink and retains any fields left unspecified",()=>{
 });
 
 it("applies width and exclusive line patterns without changing ink geometry",()=>{
-  const changed=applyStrokeStyle(strokes,selected,{width:6.25,line:"dashed"});
-  expect(changed[0]).toMatchObject({width:6.25,dashed:true,dotted:false,shape:"line"});
+  const changed=applyStrokeStyle(strokes,selected,{width:31,line:"dashed"});
+  expect(changed[0]).toMatchObject({width:6.2,dashed:true,dotted:false,shape:"line"});
   expect(changed[0].points).toBe(pen.points);
-  expect(changed[1]).toMatchObject({tool:"marker",width:6.25,dashed:true,dotted:false,pressure:false});
+  expect(changed.slice(0,2).map(strokeSize)).toEqual([31,31]);
+  expect(changed[1]).toMatchObject({tool:"marker",width:31,dashed:true,dotted:false,pressure:false});
   expect(lineStyle(applyStrokeStyle(changed,selected,{line:"solid"})[1])).toBe("solid");
   expect(lineStyle(applyStrokeStyle(changed,selected,{line:"dotted"})[1])).toBe("dotted");
 });
 
 it("skips no-op edits and records a mixed change as one undoable edit",()=>{
-  expect(applyStrokeStyle(strokes,new Set(["pen"]),{line:"solid",width:3})).toBe(strokes);
+  expect(applyStrokeStyle(strokes,new Set(["pen"]),{line:"solid",width:15})).toBe(strokes);
   expect(applyStrokeStyle(strokes,new Set(["image"]),{width:10})).toBe(strokes);
   const page={...newPage(),strokes};
   const changed=applyStrokeStyle(strokes,selected,{color:"#000000",width:5,line:"dotted"});

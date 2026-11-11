@@ -158,6 +158,12 @@ export function transformSelection(
   );
 }
 export type SelectionBounds = {left: number; top: number; right: number; bottom: number};
+export function selectionFrame(bounds:SelectionBounds|null,zoom:number):SelectionBounds|null{
+  if(!bounds)return null;
+  const padX=Math.max(0,(36/zoom-(bounds.right-bounds.left))/2);
+  const padY=Math.max(0,(36/zoom-(bounds.bottom-bounds.top))/2);
+  return {left:bounds.left-padX,right:bounds.right+padX,top:bounds.top-padY,bottom:bounds.bottom+padY};
+}
 export type SelectionHandle = {kind: "corner" | "x" | "y"; x: number; y: number; cx: number; cy: number};
 export function selectionHandles(b: SelectionBounds): SelectionHandle[] {
   const mx = (b.left + b.right) / 2, my = (b.top + b.bottom) / 2;

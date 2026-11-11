@@ -1,5 +1,5 @@
 import {it, expect} from "vitest";
-import {selectionHandles, selectionHit, selectionScale, transformSelection, moveSelection, imageAtPoint} from "./editing";
+import {selectionFrame,selectionHandles, selectionHit, selectionScale, transformSelection, moveSelection, imageAtPoint} from "./editing";
 import type {Point, Stroke} from "./model";
 const p=(x:number,y:number):Point=>({x,y,p:0.7});
 const bounds={left:10,top:20,right:210,bottom:120};
@@ -73,4 +73,14 @@ it("tap-selects only images, prioritizes the top image and respects rotated poly
  const rotated=transformSelection([image],new Set([image.id]),{angle:Math.PI/4,cx:50,cy:30})[0];
  expect(imageAtPoint([rotated],p(50,30))).toBe(rotated);
  expect(imageAtPoint([rotated],p(-5,-25))).toBeUndefined();
+});
+
+it("keeps the middle of thin selections draggable at different zoom levels",()=>{
+ for(const zoom of [.25,1,8]){
+  for(const thin of [{left:100,top:100,right:360,bottom:101},{left:100,top:100,right:101,bottom:360}]){
+   const frame=selectionFrame(thin,zoom)!;
+   expect(selectionHit(frame,p((thin.left+thin.right)/2,(thin.top+thin.bottom)/2),zoom)?.kind).toBe("move");
+   expect(selectionHit(frame,p(frame.left,frame.top),zoom)?.kind).toBe("corner");
+  }
+ }
 });

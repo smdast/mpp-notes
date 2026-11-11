@@ -18,6 +18,7 @@ import {
   moveSelection,
   transformSelection,
   selectionBounds,
+  selectionFrame,
   selectionHandles,
   selectionHit,
   selectionScale,
@@ -139,6 +140,7 @@ export function Sheet({
     handle?: SelectionHandle;
   } | null>(null);
   function clearSelection() {
+    setButtonSelection(false);
     selected.current.clear();
     refreshSelection((v) => v + 1);
     paint();
@@ -285,6 +287,20 @@ export function Sheet({
   }, [isActive]);
   useEffect(()=>{setButtonSelection(false);},[tool]);
   useEffect(()=>{
+    if(!isActive)return;
+    const dismissOutsidePage=(event:PointerEvent)=>{
+      if(!buttonSelection.current||!selected.current.size||active.current!==null)return;
+      if(event.button===1||event.button===2||penButtonTool(event,selectionButton,eraserButton))return;
+      if(event.pointerType==="pen"&&!penInContact(event))return;
+      if(!(event.target instanceof Element)||event.target===ink.current||!event.target.closest(".continuous-viewport"))return;
+      event.preventDefault();
+      event.stopPropagation();
+      clearSelection();
+    };
+    document.addEventListener("pointerdown",dismissOutsidePage,true);
+    return()=>document.removeEventListener("pointerdown",dismissOutsidePage,true);
+  },[isActive,selectionButton,eraserButton,zoom,paperColor,tool,page]);
+  useEffect(()=>{
     if(incomingSelection?.pageId!==page.id)return;
     if(tool!=="lasso")setButtonSelection(true);
     selected.current=new Set(incomingSelection.ids);setPopupOpen(true);refreshSelection(v=>v+1);schedule();
@@ -373,20 +389,20 @@ export function Sheet({
       ctx.strokeStyle = isDarkColor(paperColor) ? "#acd49a" : "#397956";
       ctx.lineWidth = 1.3 / zoom;
       ctx.setLineDash([5 / zoom, 4 / zoom]);
-      const b = moving.current?null:selectionBounds(working.current, selected.current);
+      const b = moving.current?null:selectionFrame(selectionBounds(working.current, selected.current),zoom);
       if (b) {
         ctx.fillStyle = isDarkColor(paperColor) ? "#a9d39420" : "#427b5812";
         ctx.fillRect(
-          b.left - 6,
-          b.top - 6,
-          b.right - b.left + 12,
-          b.bottom - b.top + 12,
+          b.left,
+          b.top,
+          b.right - b.left,
+          b.bottom - b.top,
         );
         ctx.strokeRect(
-          b.left - 6,
-          b.top - 6,
-          b.right - b.left + 12,
-          b.bottom - b.top + 12,
+          b.left,
+          b.top,
+          b.right - b.left,
+          b.bottom - b.top,
         );
       }
       if (b) {
@@ -545,9 +561,17 @@ export function Sheet({
     const buttonTool=penButtonTool(e,selectionButton,eraserButton);
     if(e.pointerType==="pen"&&!penInContact(e)){if(buttonTool){e.preventDefault();e.stopPropagation();}return;}
     if(e.pointerType==="mouse"&&e.button!==0)return;
-    const action=buttonTool||(e.pointerType==="touch"&&buttonSelection.current?"lasso":tool);
+    const retained=buttonSelection.current&&selected.current.size>0&&!buttonTool;
+    const action=buttonTool||(retained?"lasso":tool);
     const p = point(e);
-    const hit = action === "lasso" ? selectionHit(selectionBounds(page.strokes, selected.current), p, zoom) : null;
+    const bounds=action==="lasso"?selectionFrame(selectionBounds(page.strokes,selected.current),zoom):null;
+    const hit=selectionHit(bounds,p,zoom);
+    if(retained&&!hit&&active.current===null&&e.button!==1){
+      e.preventDefault();
+      e.stopPropagation();
+      clearSelection();
+      return;
+    }
     const image = action === "lasso" && !hit ? imageAtPoint(page.strokes, p) : undefined;
     if (
       (e.pointerType === "touch" && !hit && !image) ||
@@ -558,7 +582,7 @@ export function Sheet({
     if (active.current !== null) return;
     inputTool.current=action;
     if(buttonTool==="lasso")setButtonSelection(true);
-    else if(e.pointerType!=="touch"&&buttonSelection.current){setButtonSelection(false);clearSelection();}
+    else if(!retained&&e.pointerType!=="touch"&&buttonSelection.current)clearSelection();
     e.preventDefault();
     e.stopPropagation();
     onActivate();
@@ -710,7 +734,7 @@ export function Sheet({
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
   }
-  const bounds = selectionBounds(page.strokes, selected.current);
+  const bounds = selectionFrame(selectionBounds(page.strokes, selected.current),zoom);
   return (
     <div
       className="sheet"
