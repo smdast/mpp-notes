@@ -3143,3 +3143,21 @@ main {
   border-radius: 5px;
   cursor: pointer;
 }
+
+.surface-pen-settings a { text-decoration: underline; text-underline-offset: 3px; }
+.surface-pen-binding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 360px;
+  min-height: 42px;
+  gap: 12px;
+}
+.surface-pen-binding select {
+  min-width: 150px;
+  color: inherit;
+  background: var(--t-panel,var(--ui-fcfcf8,#fcfcf8));
+  border: 1px solid var(--t-accent,var(--ui-cbd7c4,#cbd7c4));
+  border-radius: 6px;
+  padding: 6px;
+}

@@ -1,3 +1,4 @@
+import {penShortcutGesture} from "./penShortcut";
 import {strokeStartColor} from "./draw";
 import {createCanvas,Image} from "@napi-rs/canvas";
 import {prepareImages} from "./images";
@@ -9,7 +10,7 @@ import {defaultPreferences,readPreferences} from "./preferences";
 import {defaultShortcuts,shortcutFromEvent,shortcutAction,readShortcuts,reservedShortcut,formatShortcut,nativeClipboardAction} from "./shortcuts";
 import {saveSetting,loadSetting} from "./storage";
 const pen=(buttons:number,button=-1,pressure=.6)=>({pointerType:"pen",buttons,button,pressure});
-const key=(code:string,patch:Partial<KeyboardEvent>={})=>({code,key:code.replace("Key","").toLowerCase(),ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,...patch});
+const key=(code:string,patch:Partial<KeyboardEvent>={})=>({code,key:code.replace("Key","").toLowerCase(),ctrlKey:false,metaKey:false,altKey:false,shiftKey:false,isComposing:false,...patch});
 it("applies independent mappings to the selection and eraser signals",()=>{
   for(const selection of ["lasso","eraser"] as const)for(const eraser of ["lasso","eraser"] as const){
     expect(penButtonTool(pen(2,2),selection,eraser)).toBe(selection);expect(penButtonTool(pen(3,0),selection,eraser)).toBe(selection);
@@ -112,4 +113,21 @@ it("samples rotated inserted images in drawing order and sees through transparen
     expect(at(75,30)).toBe(colors.onLight);
     expect(decoded).toHaveLength(2);
   }finally{vi.unstubAllGlobals();}
+});
+
+it("matches Surface pen shortcuts and ignores stowage signals or unmodified keys",()=>{
+  expect(penShortcutGesture(key("F20",{metaKey:true}))).toBe("single");
+  expect(penShortcutGesture(key("F19",{metaKey:true}))).toBe("double");
+  expect(penShortcutGesture(key("F18",{metaKey:true}))).toBe("hold");
+  expect(penShortcutGesture(key("F18",{altKey:true,shiftKey:true}))).toBe("hold");
+  expect(penShortcutGesture(key("F20",{metaKey:true,ctrlKey:true}))).toBeUndefined();
+  expect(penShortcutGesture(key("F20"))).toBeUndefined();
+});
+it("stores valid independent pen shortcut assignments and defaults missing or invalid values",async()=>{
+  const prefs=defaultPreferences();
+  prefs.penShortcuts={single:"undo",double:"lasso",hold:"pen"};
+  await saveSetting("pen-shortcut-test",prefs);
+  expect(readPreferences(await loadSetting("pen-shortcut-test")).penShortcuts).toEqual(prefs.penShortcuts);
+  expect(readPreferences({penShortcuts:{single:"invalid",double:"eraser"}}).penShortcuts)
+    .toEqual({single:"none",double:"eraser",hold:"none"});
 });

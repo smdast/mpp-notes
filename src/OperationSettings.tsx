@@ -1,10 +1,12 @@
 import {useEffect,useRef,useState} from "react";
 import {Eraser,Lasso,Keyboard,RotateCcw,X,Plus,PenLine,Timer,ArrowDownUp,ArrowLeftRight} from "lucide-react";
 import {MAX_SHAPE_HOLD_MS} from "./shapeHold";
+import {penShortcutActions,penShortcutGesture,penShortcutGestures,type PenShortcutAction} from "./penShortcut";
 import type {Preferences} from "./preferences";
 import {defaultShortcuts,formatShortcut,reservedShortcut,shortcutActions,shortcutFromEvent,type ShortcutAction} from "./shortcuts";
 export function OperationSettings({value,onChange}:{value:Preferences;onChange:(value:Preferences)=>void}){
   const [recording,setRecording]=useState<{action:ShortcutAction;index:number}|null>(null),[message,setMessage]=useState("");
+  const [penSignal,setPenSignal]=useState("");
   const latest=useRef(value);latest.current=value;const row=useRef<HTMLDivElement|null>(null);
   useEffect(()=>{
     if(!recording)return;
@@ -25,9 +27,43 @@ export function OperationSettings({value,onChange}:{value:Preferences;onChange:(
     window.addEventListener("keydown",key,true);window.addEventListener("pointerdown",outside,true);
     return()=>{window.removeEventListener("keydown",key,true);window.removeEventListener("pointerdown",outside,true);};
   },[recording,onChange]);
+  useEffect(()=>{
+    if(recording)return;
+    const check=(event:KeyboardEvent)=>{
+      const gesture=penShortcutGestures.find(({id})=>id===penShortcutGesture(event));
+      if(!gesture||event.repeat)return;
+      event.preventDefault();
+      setPenSignal(`${gesture.label}の入力を受信しました。`);
+    };
+    window.addEventListener("keydown",check);
+    return()=>window.removeEventListener("keydown",check);
+  },[recording]);
   return <div className="operation-settings"><h2><PenLine size={20}/>ペンのボタン</h2><p>各ボタンを押しながら用紙に触れたときの操作を選びます。</p>
     {([['selectionButton','選択ボタン'],['eraserButton','消しゴムボタン']] as const).map(([key,name])=><section key={key}><h3>{name}</h3><div className="pen-button-options" role="group" aria-label={name}>{([{id:"lasso",label:"なげなわ選択",Icon:Lasso},{id:"eraser",label:"消しゴム",Icon:Eraser}] as const).map(({id,label,Icon})=><button key={id} aria-pressed={value[key]===id} onClick={()=>onChange({...latest.current,[key]:id})}><Icon size={22}/><b>{label}</b></button>)}</div></section>)}
     <p className="operation-note">ペンの消しゴム側も、消しゴムボタンと同じ信号で通知される場合は同じ設定を使います。</p>
+    <section className="surface-pen-settings">
+      <h2>Surface Slim Pen 2</h2>
+      <h3>触覚フィードバック</h3>
+      <p>ペン本体の振動はWindowsが管理します。対応機種では「ペンと Windows Ink」の「触覚信号」でオン・オフや強さを調整できます。Web版では筆記中の振動を直接制御できません。</p>
+      <a href="ms-settings:pen">Windowsのペン設定を開く</a>
+      <h3>上部ショートカットボタン</h3>
+      <p>ペンをBluetoothでペアリングし、ノートを開いて使用します。割り当てはEdgeに入力が届く場合に動作します。</p>
+      {penShortcutGestures.map(({id,label})=><label key={id} className="surface-pen-binding">
+        <span>{label}</span>
+        <select value={value.penShortcuts[id]} onChange={event=>onChange({
+          ...latest.current,penShortcuts:{...latest.current.penShortcuts,[id]:event.currentTarget.value as PenShortcutAction},
+        })}>
+          {penShortcutActions.map(([action,name])=><option key={action} value={action}>{name}</option>)}
+        </select>
+      </label>)}
+      <p role="status">{penSignal||"この画面でボタンを押して、入力が届くか確認できます。"}</p>
+      <details>
+        <summary>入力が届かない場合</summary>
+        <p>Microsoft PowerToysのKeyboard Managerで、対象アプリを <code>msedge</code> にして以下のショートカットを割り当ててください。PowerToysを起動した状態で、この画面の受信表示を確認します。</p>
+        <ul>{penShortcutGestures.map(({id,label,key})=><li key={id}>{label}　<kbd>Win+{key}</kbd> → <kbd>Alt+Shift+{key}</kbd></li>)}</ul>
+        <a href="https://learn.microsoft.com/ja-jp/windows/powertoys/keyboard-manager" target="_blank" rel="noreferrer">Microsoftの設定手順</a>
+      </details>
+    </section>
     <h2><Timer size={20}/>図形補正</h2>
     <label className="shape-delay">
       <span>補正までの時間 <output>{(value.shapeHoldMs/1000).toFixed(1)} 秒</output></span>
