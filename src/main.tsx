@@ -90,7 +90,6 @@ import { imageStroke } from "./images";
 import { PWAControls } from "./PWAControls";
 import { clampZoom } from "./scrolling";
 import {shortcutAction} from "./shortcuts";
-import {penShortcutGesture} from "./penShortcut";
 import {editableTarget} from "./clipboard";
 import {forgetNoteView} from "./noteView";
 import { PageSidebar } from "./PageSidebar";
@@ -433,35 +432,21 @@ function App() {
     if(result.pages!==note.pages){updateNote({...note,pages:result.pages});const targetId=redo?result.ids.at(-1):result.ids[0];if(targetId!==page.id&&result.pages.some(p=>p.id===targetId))goPage(targetId!);}
   }
   useEffect(() => {
-    const key = (e: KeyboardEvent, fromPen=false) => {
+    const key = (e: KeyboardEvent) => {
       if (
         e.defaultPrevented || e.isComposing || editableTarget(e.target) || view!=="editor" || blocked ||
         dialog || settingsOpen || document.querySelector(".page-context-menu,.page-template-dialog") ||
         busy || writing.current || conflictPendingRef.current
       )
         return;
-      const pref=preferencesRef.current;
-      const gesture=fromPen?penShortcutGesture(e):undefined;
-      const action=gesture?pref.penShortcuts[gesture]:shortcutAction(pref.shortcuts,e);
-      if(fromPen){
-        if(!gesture||action==="none")return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        if(e.repeat)return;
-      }
+      const pref=preferencesRef.current,action=shortcutAction(pref.shortcuts,e);
       if(action==="undo"||action==="redo"){e.preventDefault();undo(action==="redo");}
       else if(action==="pen"||action==="marker"){
         e.preventDefault();const id=penKind(pref.activePen,pref.pens[pref.activePen])===action?pref.activePen:penIds(pref,action)[0];if(id)choosePen(id);
       }else if(action==="eraser"||action==="lasso"||action==="hand"){e.preventDefault();setTool(action);}
     };
-    const keyboard=(event:KeyboardEvent)=>key(event);
-    const penShortcut=(event:KeyboardEvent)=>{if(penShortcutGesture(event))key(event,true);};
-    window.addEventListener("keydown",penShortcut,true);
-    window.addEventListener("keydown",keyboard);
-    return ()=>{
-      window.removeEventListener("keydown",penShortcut,true);
-      window.removeEventListener("keydown",keyboard);
-    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
   }, [page, dialog, busy, historyRevision, settingsOpen,view,blocked]);
   function select(n: Note) {
     // Async imports can navigate before React commits their new note list.

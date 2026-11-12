@@ -2,8 +2,7 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
-  {version:"1.24.0",date:"2026-11-12",title:"Surface Slim Pen 2の上部ボタン設定",changes:["Edgeが受信した上部ボタン入力に、押し方ごとの操作を割り当て","触覚信号を調整するWindowsのペン設定へのリンクを追加"],commits:[]},
-  {version:"1.23.1",date:"2026-11-11",title:"なげなわの移動とスタイル変更を改善",changes:["細長い選択枠でも中央から移動できる","ペンの選択ボタンを離した後も選択を保持し、枠外を最初に押すと選択を解除","スタイル変更の色に前回の色を表示し、太さの数値をペン設定と統一"],commits:["8bc6cce"]},
+  {version:"1.23.1",date:"2026-11-11",title:"なげなわの移動とスタイル変更を改善",changes:["細長い選択枠でも中央から移動できる","ペンの選択ボタンを離した後も選択を保持し、枠外を最初に押すと選択を解除","スタイル変更の色に前回の色を表示し、太さの数値をペン設定と統一"],commits:[]},
   {version:"1.23.0",date:"2026-11-09",title:"なげなわで選んだ線のスタイル変更",changes:["なげなわメニューから、選んだ線の色・太さ・実線／点線／破線を変更","指定した項目だけをまとめて変更し、元に戻す操作にも対応"],commits:["024e61b"]},
   {version:"1.22.2",date:"2026-11-09",title:"図形補正の待機中に許容するペン先のズレを拡大",changes:["終点付近で画面上6pxまでのズレを許容し、手ぶれによる待ち時間の数え直しを減らす"],commits:["5af1767"]},
   {version:"1.22.1",date:"2026-11-08",title:"貼り付けた画像の上でペン色を切り替え",changes:["ペン色の自動切り替えが挿入画像に対応。透明な部分では下に見える背景の明るさを使用"],commits:["80f743e"]},
