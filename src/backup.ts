@@ -22,6 +22,7 @@ const finite = (x: unknown) => typeof x === "number" && Number.isFinite(x);
 export function validStroke(s: Stroke) {
   return (
     !!s &&
+    (s.opacity === undefined || (finite(s.opacity) && s.opacity >= 0 && s.opacity <= 1)) &&
     (s.dotted === undefined || typeof s.dotted === "boolean") &&
     (s.dashed === undefined || typeof s.dashed === "boolean") &&
     (s.image === undefined ||

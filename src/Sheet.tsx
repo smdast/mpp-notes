@@ -1,3 +1,4 @@
+import {defaultFill,fillStroke,type FillSettings} from "./fill";
 import {scratchErase as eraseScratch} from "./scratch";
 import {penButtonTool,penInContact,type SelectionButtonAction} from "./penInput";
 import {defaultShortcuts,shortcutAction,nativeClipboardAction,type ShortcutMap} from "./shortcuts";
@@ -36,7 +37,7 @@ import { cloneStrokes, decodeStrokes, editableTarget, localStrokes, rememberStro
 import { imageStroke, prepareImages, loadInkImage } from "./images";
 import {StrokeIndex,strokeBounds,unionBounds,type Bounds} from "./spatial";
 import type {SelectionDrag,IncomingSelection} from "./selectionTransfer";
-export type Tool = "pen" | "marker" | "eraser" | "lasso" | "hand";
+export type Tool = "pen" | "marker" | "eraser" | "fill" | "lasso" | "hand";
 type Props = {
   selectionButton?:SelectionButtonAction;
   eraserButton?:SelectionButtonAction;
@@ -57,6 +58,8 @@ type Props = {
   tool: Tool;
   color: string;
   autoColor?:AutoPenColor;
+  markerOpacity?:number;
+  fill?:FillSettings;
   width: number;
   eraserMode: EraserMode;
   eraserSize: number;
@@ -86,6 +89,8 @@ export function Sheet({
   tool,
   color,
   autoColor,
+  markerOpacity,
+  fill=defaultFill,
   width,
   eraserMode,
   eraserSize,
@@ -574,12 +579,28 @@ export function Sheet({
     }
     const image = action === "lasso" && !hit ? imageAtPoint(page.strokes, p) : undefined;
     if (
-      (e.pointerType === "touch" && !hit && !image) ||
+      (e.pointerType === "touch" && !hit && !image && action!=="fill") ||
       action === "hand" ||
       e.button === 1
     )
       return;
     if (active.current !== null) return;
+    if(action==="fill"){
+      e.preventDefault();
+      e.stopPropagation();
+      onActivate();
+      try{
+        const region=fillStroke(page,p,fill);
+        if(region){
+          onCommit([...page.strokes,region]);
+          onError("");
+        }
+        else onError("線で囲まれた領域の内側を指定してください。");
+      }catch{
+        onError("領域を塗りつぶせませんでした。");
+      }
+      return;
+    }
     inputTool.current=action;
     if(buttonTool==="lasso")setButtonSelection(true);
     else if(!retained&&e.pointerType!=="touch"&&buttonSelection.current)clearSelection();
@@ -622,6 +643,7 @@ export function Sheet({
       current.current = {
         id: uid(),
         tool: action === "marker" ? "marker" : "pen",
+        opacity:action==="marker"?markerOpacity:undefined,
         color:autoColor?.enabled?strokeStartColor(autoColor,paper.current,p,page,paperColor,imageLayers):color,
         pressure,
         dotted,

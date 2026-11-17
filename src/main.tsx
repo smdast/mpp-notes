@@ -1,3 +1,4 @@
+import {defaultFill} from "./fill";
 import {useDismiss} from "./useDismiss";
 import { flushSync } from "react-dom";
 import { useDriveSync } from "./drive/useDriveSync";
@@ -574,9 +575,6 @@ function App() {
       setError(e instanceof Error ? e.message : "フォルダーを変更できません。");
     }
   }
-  const colors = dark
-    ? ["#e3efdf", "#d0d9e9", "#8ec5ff", "#ffa5ad", "#e9c968", "#c1a7ef"]
-    : ["#243d35", "#202b39", "#376fac", "#bd6263", "#bd8d39", "#8466a5"];
   return (
     <div className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
       {view === "library" && !settingsOpen && (
@@ -732,7 +730,8 @@ function App() {
                 <button className="icon-button" title="設定" aria-label="設定" onClick={openSettings}><Settings size={17}/></button>
               </div>
             </header>
-            <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color} colors={colors}
+            <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color}
+              fill={preferences.fill??defaultFill} onFill={fill=>storePreferences({...preferencesRef.current,fill})}
               eraserMode={eraserMode} eraserSize={eraserSize}
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}
               onUndo={undo} onTool={setTool} onPen={choosePen} onAddPen={registerPen} onDeletePen={removePen} onSettings={setPen} onColor={setColor}
@@ -776,6 +775,8 @@ function App() {
                     tool={tool}
                     color={color}
                     autoColor={preferences.pens[preferences.activePen].autoColor}
+                    markerOpacity={preferences.pens[preferences.activePen].opacity}
+                    fill={preferences.fill??defaultFill}
                     width={width}
                     pressure={pressure}
                     dotted={!!dotted}

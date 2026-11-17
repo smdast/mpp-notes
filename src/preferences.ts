@@ -1,3 +1,4 @@
+import type {FillSettings} from "./fill";
 import {defaultShortcuts,readShortcuts,type ShortcutMap} from "./shortcuts";
 import {SHAPE_HOLD_MS,MAX_SHAPE_HOLD_MS} from "./shapeHold";
 import type {ScrollDirection} from "./scrolling";
@@ -8,6 +9,7 @@ export type PenKind = "pen" | "marker";
 export type Theme = "system" | "light" | "dark";
 export type AutoPenColor = {enabled:boolean;onLight:string;onDark:string};
 export type PenSettings = {
+  opacity?:number;
   autoColor?:AutoPenColor;
   kind?:PenKind;
   shapeCorrection?:boolean;
@@ -22,6 +24,7 @@ export type Preferences = {
   selectionButton:SelectionButtonAction;
   eraserButton:SelectionButtonAction;
   shortcuts:ShortcutMap;
+  fill?:FillSettings;
   shapeHoldMs:number;
   scrollDirection:ScrollDirection;
   deletedPens?: BuiltinPenId[];
@@ -56,6 +59,7 @@ export function readPreferences(value: unknown): Preferences {
   if(v.selectionButton==="eraser"||v.selectionButton==="lasso")base.selectionButton=v.selectionButton;
   if(v.eraserButton==="eraser"||v.eraserButton==="lasso")base.eraserButton=v.eraserButton;
   base.shortcuts=readShortcuts(v.shortcuts);
+  if(v.fill&&typeof v.fill.color==="string"&&/^#[0-9a-f]{6}$/i.test(v.fill.color)&&validOpacity(v.fill.opacity))base.fill=v.fill;
   if(typeof v.shapeHoldMs==="number"&&Number.isFinite(v.shapeHoldMs)&&v.shapeHoldMs>=0&&v.shapeHoldMs<=MAX_SHAPE_HOLD_MS)base.shapeHoldMs=Math.round(v.shapeHoldMs/100)*100;
   if(v.scrollDirection==="horizontal")base.scrollDirection=v.scrollDirection;
   const legacyCorrection=typeof v.shapeCorrection === "boolean"?v.shapeCorrection:true;
@@ -77,6 +81,7 @@ export function readPreferences(value: unknown): Preferences {
       const kind=penKind(key,p),fallback=base.pens[key]||base.pens[kind==="marker"?"marker":"pen1"];
       base.pens[key] = {
         color:p.color,pressure:p.pressure,kind,
+        ...(validOpacity(p.opacity)?{opacity:p.opacity}:{}),
         ...(validAutoPenColor(p.autoColor)?{autoColor:p.autoColor}:{}),
         width: Math.round(p.width * 5) / 5,
         shapeCorrection:typeof p.shapeCorrection === "boolean"?p.shapeCorrection:legacyCorrection,
@@ -91,6 +96,9 @@ export function readPreferences(value: unknown): Preferences {
   if(!available.length){base.deletedPens=base.deletedPens?.filter(id=>id!=="pen1");available=["pen1"];}
   base.activePen=isPenId(v.activePen)&&available.includes(v.activePen)?v.activePen:available[0];
   return base;
+}
+function validOpacity(value:unknown):value is number{
+  return typeof value==="number"&&Number.isFinite(value)&&value>=0&&value<=1;
 }
 function validAutoPenColor(value:unknown):value is AutoPenColor {
   if(!value||typeof value!=="object")return false;

@@ -116,7 +116,7 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, presmoothed
   ctx.fillStyle = s.color;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.globalAlpha = s.tool === "marker" ? 0.27 : 1;
+  ctx.globalAlpha = s.opacity ?? (s.tool === "marker" ? 0.27 : 1);
   if (s.dotted) {
     ctx.beginPath();
     for (const p of dotPoints(points, Math.max(4, s.width * 3))) {

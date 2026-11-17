@@ -3143,3 +3143,10 @@ main {
   border-radius: 5px;
   cursor: pointer;
 }
+
+.named-palette { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px 3px; }
+.named-palette button { display:grid; justify-items:center; gap:4px; min-height:39px; padding:3px 0; font-size:9px; white-space:nowrap; border-radius:5px; }
+.named-palette label { grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; }
+.named-palette input { width:42px; height:28px; padding:2px; cursor:pointer; }
+.fill-hint { margin:0; font-size:12px; }
+.ink.fill { cursor:crosshair; }

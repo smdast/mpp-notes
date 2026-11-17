@@ -21,6 +21,7 @@ import {createPortal} from "react-dom";
 import {transferSelection,type SelectionDrag,type IncomingSelection} from "./selectionTransfer";
 import type {PageChange} from "./notebookHistory";
 import type {ShortcutMap} from "./shortcuts";
+import type {FillSettings} from "./fill";
 import type {AutoPenColor} from "./preferences";
 import type {SelectionButtonAction} from "./penInput";
 import {readNoteView,captureNoteView,restoreNoteView,saveNoteView,type NoteView} from "./noteView";
@@ -43,6 +44,8 @@ type Props = {
   tool: Tool;
   color: string;
   autoColor?:AutoPenColor;
+  markerOpacity?:number;
+  fill?:FillSettings;
   width: number;
   pressure: boolean;
   dotted: boolean;
@@ -125,6 +128,8 @@ function PageSlot({
           tool={props.tool}
           color={props.color}
           autoColor={props.autoColor}
+          markerOpacity={props.markerOpacity}
+          fill={props.fill}
           width={props.width}
           pressure={props.pressure}
           dotted={props.dotted}
