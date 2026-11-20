@@ -2,7 +2,8 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
-  {version:"1.25.0",date:"2026-11-17",title:"名前付きの色パレットと塗りつぶし",changes:["ペンの色パレットを18色に拡張","蛍光ペンごとに透明度を設定","線で閉じた領域を、選んだ色と透明度で塗りつぶし"],commits:[]},
+  {version:"1.26.0",date:"2026-11-20",title:"ライブラリでドラッグして整理",changes:["ノート管理の名称をライブラリへ統一","ノートとフォルダーをドラッグして移動。タッチでは長押しで移動","ノートの名前変更・削除・表紙設定を︙メニューに集約"],commits:[]},
+  {version:"1.25.0",date:"2026-11-17",title:"名前付きの色パレットと塗りつぶし",changes:["ペンの色パレットを18色に拡張","蛍光ペンごとに透明度を設定","線で閉じた領域を、選んだ色と透明度で塗りつぶし"],commits:["7d83b05"]},
   {version:"1.23.1",date:"2026-11-11",title:"なげなわの移動とスタイル変更を改善",changes:["細長い選択枠でも中央から移動できる","ペンの選択ボタンを離した後も選択を保持し、枠外を最初に押すと選択を解除","スタイル変更の色に前回の色を表示し、太さの数値をペン設定と統一"],commits:[]},
   {version:"1.23.0",date:"2026-11-09",title:"なげなわで選んだ線のスタイル変更",changes:["なげなわメニューから、選んだ線の色・太さ・実線／点線／破線を変更","指定した項目だけをまとめて変更し、元に戻す操作にも対応"],commits:["024e61b"]},
   {version:"1.22.2",date:"2026-11-09",title:"図形補正の待機中に許容するペン先のズレを拡大",changes:["終点付近で画面上6pxまでのズレを許容し、手ぶれによる待ち時間の数え直しを減らす"],commits:["5af1767"]},

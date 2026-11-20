@@ -4,13 +4,12 @@ import {
   BookOpen,
   Folder,
   Search,
-  PenLine,
-  Trash2,
   ChevronRight,
   Plus,
   FileUp,
   PanelLeft,
 } from "lucide-react";
+import {LibraryNoteMenu} from "./LibraryNoteMenu";
 import { NoteCover } from "./NoteCover";
 import {formatUpdated} from "./formatTime";
 import { displayPath } from "./Breadcrumb";
@@ -89,7 +88,7 @@ export function Library({
           <PanelLeft size={19} />
         </button>
         <div>
-          <h1>ノート管理</h1>
+          <h1>ライブラリ</h1>
         </div>
         <div>
           {themeControl}
@@ -117,11 +116,11 @@ export function Library({
         </div>
       )}
       <div className="library-breadcrumb">
-        <button onClick={() => onFolder("*")}>すべてのノート</button>
+        <button data-library-target="*" onClick={() => onFolder("*")}>すべてのノート</button>
         {folder === "" ? (
           <>
             <PathChevron className="path-separator" size={13} aria-hidden="true"/>
-            <span>未分類</span>
+            <span data-library-target="">未分類</span>
           </>
         ) : (
           folder !== "*" &&
@@ -129,6 +128,7 @@ export function Library({
             <span key={i}>
               <PathChevron className="path-separator" size={13} aria-hidden="true"/>
               <button
+                data-library-target={folder.split("/").slice(0,i+1).join("/")}
                 onClick={() =>
                   onFolder(
                     folder
@@ -169,7 +169,8 @@ export function Library({
             <h2>フォルダー</h2>
             <div className="folder-cards">
               {children.map((f) => (
-                <button key={f} onClick={() => onFolder(f)}>
+                <button key={f} draggable data-library-kind="folder" data-library-id={f} data-library-label={folderName(f)}
+                  data-library-target={f} onClick={() => onFolder(f)}>
                   <Folder size={24} />
                   <span>
                     {folderName(f)}
@@ -203,7 +204,8 @@ export function Library({
         <div className="note-grid">
           {visible.map((n) => (
             <article className="note-card" key={n.id}>
-              <button className="note-open" onClick={() => onOpen(n)}>
+              <button className="note-open" draggable data-library-kind="note" data-library-id={n.id}
+                data-library-label={n.title} onClick={() => onOpen(n)}>
                 <div className={"note-cover " + (n.pdf ? "pdf" : "")}>
                   <NoteCover note={n} dark={dark}/>
                 </div>
@@ -216,32 +218,8 @@ export function Library({
                   <small>{n.folder ? displayPath(n.folder) : "未分類"}</small>
                 </div>
               </button>
-              <div className="note-card-actions">
-                <label className="cover-upload" title="表紙画像を選択">表紙<input type="file" accept="image/*" aria-label={`${n.title} の表紙画像`} onChange={e=>{const f=e.target.files?.[0];e.target.value="";if(f)onCover(n,f);}}/></label>
-                {n.coverImage&&<button className="cover-reset" title="1ページ目の表紙に戻す" onClick={()=>onCover(n)}>自動</button>}
-
-                <select
-                  aria-label={`${n.title} の移動先`}
-                  value={n.folder || ""}
-                  onChange={(e) => onMove(n, e.target.value)}
-                >
-                  <option value="">未分類</option>
-                  {folders.map((f) => (
-                    <option key={f} value={f}>
-                      {displayPath(f)}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  title={`${n.title} の名前を変更`}
-                  onClick={() => onRename(n)}
-                >
-                  <PenLine size={15} />
-                </button>
-                <button title={`${n.title} を削除`} onClick={() => onDelete(n)}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
+              <LibraryNoteMenu note={n} folders={folders} onRename={()=>onRename(n)} onDelete={()=>onDelete(n)}
+                onCover={file=>onCover(n,file)} onMove={target=>onMove(n,target)}/>
             </article>
           ))}
         </div>

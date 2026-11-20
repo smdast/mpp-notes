@@ -3150,3 +3150,35 @@ main {
 .named-palette input { width:42px; height:28px; padding:2px; cursor:pointer; }
 .fill-hint { margin:0; font-size:12px; }
 .ink.fill { cursor:crosshair; }
+
+.note-card { position: relative; }
+.library-note-menu .note-more {
+  position:absolute; right:8px; bottom:12px; width:36px; height:36px;
+  border-radius:7px; background:var(--t-panel,var(--ui-fcfcf8,#fcfcf8));
+  color:var(--t-text,var(--ui-345d48,#345d48));
+}
+.note-open > div:last-child { padding-right:30px; }
+.library-note-panel {
+  position:fixed;z-index:65;width:225px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);
+  overflow:auto;padding:7px;border:1px solid var(--t-accent,var(--ui-cbd7c4,#cbd7c4));border-radius:10px;
+  background:var(--t-panel,var(--ui-fcfcf8,#fcfcf8));color:var(--t-text,var(--ui-345d48,#345d48));box-shadow:0 6px 24px #0003;
+  animation:ui-panel-in 150ms ease-out both;
+}
+[data-theme="dark"] .library-note-panel,[data-theme="dark"] .library-note-menu .note-more {
+  background:var(--t-panel,#213426);color:var(--t-text,#d2e5c1);
+}
+.library-note-panel button {width:100%;justify-content:flex-start;min-height:40px;border-radius:6px;padding:8px;}
+.library-note-panel label {display:grid;gap:8px;padding:8px;}
+.library-note-panel label > span {display:flex;gap:8px;align-items:center;}
+.library-note-panel select {min-width:0;width:100%;padding:8px;border:1px solid currentColor;border-radius:5px;background:inherit;color:inherit;}
+.library-note-panel .danger {color:#ba4d50;}
+[data-theme="dark"] .library-note-panel .danger {color:#efa2a5;}
+[data-library-kind] {user-select:none;-webkit-touch-callout:none;}
+[data-library-kind] img {pointer-events:none;-webkit-user-drag:none;}
+.library-drop-target {outline:2px solid var(--t-accent,var(--ui-345d48,#345d48));outline-offset:-2px;filter:brightness(.92);}
+.library-drag-source {opacity:.4;}
+.library-drag-ghost {
+  position:fixed;top:0;left:0;z-index:100;max-width:230px;padding:14px 18px;border-radius:9px;
+  color:var(--t-text,var(--ui-345d48,#345d48));background:var(--t-panel,var(--ui-fcfcf8,#fcfcf8));
+  box-shadow:0 6px 28px #0004;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}

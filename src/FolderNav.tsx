@@ -72,6 +72,11 @@ export function FolderNav({
         ].map((f) => (
           <button
             key={f.id}
+            draggable={f.id!==""&&f.id!=="*"}
+            data-library-kind={f.id!==""&&f.id!=="*"?"folder":undefined}
+            data-library-id={f.id}
+            data-library-label={f.name}
+            data-library-target={f.id}
             title={f.id === "*" ? f.name : displayPath(f.id) || "未分類"}
             style={{
               paddingLeft: 12 + Math.min(5, f.id.split("/").length - 1) * 12,

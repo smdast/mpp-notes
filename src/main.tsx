@@ -1,3 +1,5 @@
+import {useLibraryDrag} from "./useLibraryDrag";
+import {moveLibraryItem} from "./libraryMove";
 import {defaultFill} from "./fill";
 import {useDismiss} from "./useDismiss";
 import { flushSync } from "react-dom";
@@ -575,8 +577,19 @@ function App() {
       setError(e instanceof Error ? e.message : "フォルダーを変更できません。");
     }
   }
+  const libraryDrag=useLibraryDrag({
+    enabled:ready&&view==="library"&&!settingsOpen&&!dialog&&!busy,
+    notes,folders,onError:setError,
+    onMove:(item,target)=>{
+      const result=moveLibraryItem(item,target,notesRef.current,foldersRef.current);
+      notesRef.current=result.notes;foldersRef.current=result.folders;
+      setNotes(result.notes);setFolders(result.folders);
+      if(item.kind==="folder")setFolder(target==="*"?"*":target);
+      enqueue(()=>saveSnapshot(result.notes,result.folders));
+    },
+  });
   return (
-    <div className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
+    <div ref={libraryDrag} className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
       {view === "library" && !settingsOpen && (
         <aside className="sidebar">
           <a className="brand" href="./">
@@ -639,7 +652,7 @@ function App() {
               setNoteId(n.id);
               setDialog({ kind: "deleteNote" });
             }}
-            onMove={(n, f) => updateNote({ ...n, folder: f || undefined })}
+            onMove={(n, f) => {const current=notesRef.current.find(note=>note.id===n.id);if(current)updateNote({...current,folder:f||undefined});}}
             onNew={() => setDialog({ kind: "new", value: "" })}
             onImport={() => pdfInput.current?.click()}
             onImportNote={()=>noteInput.current?.click()}
@@ -653,12 +666,12 @@ function App() {
               <div className="breadcrumb">
                 <button
                   className="library-back"
-                  aria-label="ノート管理へ戻る"
-                  title="ノート管理へ戻る"
+                  aria-label="ライブラリへ戻る"
+                  title="ライブラリへ戻る"
                   onClick={library}
                 >
                   <img src="./icon.svg" width="22" height="22" alt=""/>
-                  <span>ノート管理</span>
+                  <span>ライブラリ</span>
                 </button>
                 <span className="breadcrumb-library">
                   <Breadcrumb folder={note?.folder} />
@@ -1002,7 +1015,7 @@ function App() {
                 </p>
                 <p>
                   <b>フォルダー</b>
-                  　ノート管理ページで階層フォルダーを作成・変更できます。配下もまとめて移動・名前変更でき、削除時もノートは親フォルダーに残ります。
+                  　ライブラリページで階層フォルダーを作成・変更できます。配下もまとめて移動・名前変更でき、削除時もノートは親フォルダーに残ります。
                 </p>
                 <p>
                   <b>オフライン</b>
