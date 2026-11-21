@@ -223,7 +223,7 @@ export function Sheet({
   }
   function canPaste(target: EventTarget | null) {
     return live.current.isActive && !editableTarget(target) && active.current === null &&
-      !document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu');
+      !document.querySelector('dialog[open],.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu');
   }
   async function pasteContent(strokes?: Stroke[] | null, image?: Blob) {
     if (pasting.current || !canPaste(null)) return;
@@ -312,7 +312,7 @@ export function Sheet({
   },[incomingSelection?.token,page.id]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if(e.defaultPrevented||!isActive||editableTarget(e.target)||document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu'))return;
+      if(e.defaultPrevented||!isActive||editableTarget(e.target)||document.querySelector('dialog[open],.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu'))return;
       const action=shortcutAction(shortcuts,e),native=nativeClipboardAction(e);
       if(native&&!action){e.preventDefault();return;}
       if(action==="paste"){
@@ -324,7 +324,7 @@ export function Sheet({
         !selectionMode() ||
         !selected.current.size ||
         editableTarget(e.target) ||
-        document.querySelector('.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu')
+        document.querySelector('dialog[open],.modal-backdrop,.busy-overlay,.settings-page,.page-context-menu')
       )
         return;
       if (action==="copy"||action==="cut") {

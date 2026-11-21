@@ -1,3 +1,6 @@
+import {Selector} from "@astryxdesign/core/Selector";
+import {Button} from "@astryxdesign/core/Button";
+import {TextInput} from "@astryxdesign/core/TextInput";
 import { ChevronRight as PathChevron } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import {
@@ -93,19 +96,10 @@ export function Library({
         <div>
           {themeControl}
           {driveControl}
-          <button className="export-button" disabled={!ready} onClick={onImportNote} aria-label="ノートファイルを取り込む"><FileUp size={16}/>ノート取り込み</button>
-          <button
-            className="export-button"
-            disabled={!ready}
-            onClick={onImport}
-          >
-            <FileUp size={16} />
-            PDF取り込み
-          </button>
-          <button className="primary" disabled={!ready} onClick={onNew}>
-            <Plus size={16} />
-            新しいノート
-          </button>
+          <Button label="ノート取り込み" aria-label="ノートファイルを取り込む" icon={<FileUp size={16}/>} isDisabled={!ready} onClick={onImportNote}/>
+          <Button label="PDF取り込み" icon={<FileUp size={16}/>} isDisabled={!ready} onClick={onImport}/>
+          <Button label="新しいノート" variant="primary" icon={<Plus size={16}/>} isDisabled={!ready} onClick={onNew}/>
+
         </div>
       </header>
       {error && (
@@ -145,23 +139,9 @@ export function Library({
         )}
       </div>
       <div className="library-tools">
-        <label>
-          <Search size={17} />
-          <input
-            aria-label="ノートを検索"
-            placeholder="ノート名で検索"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </label>
-        <select
-          aria-label="ノートの並べ替え"
-          value={sort}
-          onChange={(e) => setSort(e.target.value)}
-        >
-          <option value="updated">更新が新しい順</option>
-          <option value="title">名前順</option>
-        </select>
+        <TextInput label="ノートを検索" isLabelHidden type="search" placeholder="ノート名で検索" startIcon={<Search size={17}/>} value={query} onChange={setQuery} hasClear containerClassName="library-search"/>
+        <Selector label="ノートの並べ替え" isLabelHidden variant="ghost" value={sort} onChange={v=>{if(v)setSort(v);}} options={[{value:"updated",label:"更新が新しい順"},{value:"title",label:"名前順"}]} containerClassName="library-sort"/>
+
       </div>
       <div className="library-content">
         {!query && children.length > 0 && (

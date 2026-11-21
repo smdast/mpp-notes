@@ -4,11 +4,12 @@ export function useDismiss(open:boolean, refs:RefObject<HTMLElement|null>[], clo
  useEffect(()=>{
   if(!open)return;
   const down=(e:PointerEvent)=>{
+   if(document.querySelector("dialog[open]"))return;
    if(latest.current.refs.some(r=>r.current&&e.composedPath().includes(r.current)))return;
    latest.current.close();
    if(consumeCanvas&&e.target instanceof Element&&e.target.closest(".viewport")){e.preventDefault();e.stopPropagation();}
   };
-  const key=(e:KeyboardEvent)=>{if(e.key==="Escape")latest.current.close();};
+  const key=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!document.querySelector("dialog[open]"))latest.current.close();};
   document.addEventListener("pointerdown",down,true);document.addEventListener("keydown",key);
   return()=>{document.removeEventListener("pointerdown",down,true);document.removeEventListener("keydown",key);};
  },[open,consumeCanvas]);

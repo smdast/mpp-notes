@@ -1,3 +1,6 @@
+import {AppDialog} from "./AppDialog";
+import {CustomColor} from "./CustomColor";
+import {NumberInput} from "@astryxdesign/core/NumberInput";
 import {useDismiss} from "./useDismiss";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -50,16 +53,12 @@ export function SelectionPopup({canvas, bounds, zoom, onCopy, onCut, onDuplicate
     window.addEventListener("resize", update);
     return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
   }, [canvas, bounds.left, bounds.top, bounds.right, bounds.bottom, zoom, editing]);
-  return createPortal(<div ref={popup} role={editing?"dialog":"toolbar"} aria-label={editing?"スタイル変更":"選択したストロークの操作"}
+  return createPortal(<div ref={popup} role={editing?undefined:"toolbar"} aria-label={editing?undefined:"選択したストロークの操作"}
     className={`selection-popup${editing?" selection-style-popup":""}`}
     style={{left:position.left,top:position.top,maxHeight:editing?position.maxHeight:undefined,visibility:position.visible?"visible":"hidden"}}
     onPointerDown={e=>e.stopPropagation()}
-    onKeyDown={e=>{
-      if(!editing)return;
-      e.stopPropagation();
-      if(e.key==="Escape"){e.preventDefault();closeStyle();}
-    }}>
-    {editing?<SelectionStyleEditor strokes={strokes} onCancel={closeStyle} onApply={patch=>{onStyle(patch);closeStyle();}}/>:<>
+>
+    {editing?<AppDialog title="スタイル変更" onClose={closeStyle} width={380}><SelectionStyleEditor strokes={strokes} onCancel={closeStyle} onApply={patch=>{onStyle(patch);closeStyle();}}/></AppDialog>:<>
       {[
         {label:"コピー",Icon:Copy,run:onCopy},
         {label:"切り取り",Icon:Scissors,run:onCut},
@@ -100,11 +99,11 @@ function SelectionStyleEditor({strokes,onApply,onCancel}:{
   const [color,setColor]=useState<string>();
   const [width,setWidth]=useState<string>();
   const [line,setLine]=useState<LineStyle>();
-  const input=useRef<HTMLInputElement>(null);
-  useLayoutEffect(()=>{input.current?.focus({preventScroll:true});},[]);
+  const [widthError,setWidthError]=useState(false);
+
   const amount=width?Number(width):undefined;
   const validWidth=amount===undefined||(Number.isInteger(amount)&&amount>=1&&amount<=100);
-  const canApply=strokes.length>0&&validWidth&&(
+  const canApply=strokes.length>0&&validWidth&&!widthError&&(
     (color!==undefined&&color!==commonColor)||(amount!==undefined&&amount!==commonWidth)||(line!==undefined&&line!==commonLine)
   );
   return <form onSubmit={e=>{
@@ -115,17 +114,13 @@ function SelectionStyleEditor({strokes,onApply,onCancel}:{
     }
     onApply({color,width:amount,line});
   }}>
-    <strong>スタイル変更</strong>
     <div className="selection-style-row">
-      <label htmlFor="selection-stroke-color">色</label>
+      <label>色</label>
       {commonColor!==initialColor&&color===undefined&&<button type="button" onClick={()=>setColor(initialColor)}>この色を使う</button>}
-      <input ref={input} id="selection-stroke-color" type="color" value={color??initialColor} onInput={e=>setColor(e.currentTarget.value)}/>
+      <CustomColor value={color??initialColor} onChange={setColor}/>
     </div>
-    <label className="selection-style-row">
-      <span>太さ</span>
-      <input type="number" aria-label="太さ" placeholder={commonWidth===undefined?"混在":undefined}
-        min={1} max={100} step={1} value={width??(commonWidth===undefined?"":String(commonWidth))} onChange={e=>setWidth(e.currentTarget.value)}/>
-    </label>
+    <NumberInput label="太さ" onEntryErrorChange={error=>setWidthError(error!==null)} placeholder={commonWidth===undefined?"混在":undefined} min={1} max={100} step={1} isIntegerOnly isWheelEnabled={false} hasClear value={width===undefined?commonWidth:width?Number(width):null} onChange={n=>setWidth(n===null?"":String(n))}/>
+
     <LineStylePicker value={line??commonLine} onChange={setLine}/>
     <div className="selection-style-actions">
       <button type="button" onClick={onCancel}>キャンセル</button>

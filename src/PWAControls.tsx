@@ -1,3 +1,4 @@
+import {ActionButton} from "./ActionButton";
 import { useEffect, useRef, useState } from "react";
 import { Download, RefreshCw, WifiOff } from "lucide-react";
 import { registerSW } from "virtual:pwa-register";
@@ -51,7 +52,7 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
   }, []);
   return (
     <div className="pwa-controls">
-      <button disabled={checking} onClick={()=>{
+      <ActionButton disabled={checking} onClick={()=>{
         if(!navigator.onLine){setMessage("オフラインです。通信できる状態で更新を確認してください。");return;}
         setChecking(true);setMessage("");
         void (async()=>{
@@ -65,9 +66,9 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
           }catch{setMessage("更新を確認できませんでした。通信を確認して再度お試しください。");}
           finally{setChecking(false);}
         })();
-      }}><RefreshCw size={14}/>{checking?"更新を確認中…":"更新を確認"}</button>
+      }}><RefreshCw size={14}/>{checking?"更新を確認中…":"更新を確認"}</ActionButton>
       {install && (
-        <button
+        <ActionButton
           onClick={() =>
             void (async () => {
               await install.prompt();
@@ -78,7 +79,7 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
         >
           <Download size={14} />
           アプリをインストール
-        </button>
+        </ActionButton>
       )}
       {offline && (
         <small>
@@ -87,7 +88,7 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
         </small>
       )}
       {update && (
-        <button
+        <ActionButton
           onClick={() => {
             if (!allowed.current()) {
               setMessage("保存完了・筆記終了後に更新してください。");
@@ -99,7 +100,7 @@ export function PWAControls({ canReload }: { canReload: () => boolean }) {
         >
           <RefreshCw size={14} />
           {availableVersion?`バージョン ${availableVersion} に更新`:"新しいバージョンに更新"}
-        </button>
+        </ActionButton>
       )}
       {message && <small role="status">{message}</small>}
     </div>

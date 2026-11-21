@@ -1,7 +1,7 @@
 {
   "name": "mpp-notes",
   "private": true,
-  "version": "1.26.0",
+  "version": "1.27.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -12,6 +12,9 @@
     "prebuild": "node scripts/copy-pdf-assets.mjs"
   },
   "dependencies": {
+    "@astryxdesign/core": "^0.7.17",
+    "@astryxdesign/theme-neutral": "^0.7.17",
+    "@stylexjs/stylex": "^0.19.2",
     "fflate": "^0.8.2",
     "lucide-react": "^0.468.0",
     "pdf-lib": "^1.17.1",
@@ -20,6 +23,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@astryxdesign/cli": "^0.7.17",
     "@napi-rs/canvas": "^0.1.100",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

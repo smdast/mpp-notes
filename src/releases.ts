@@ -2,6 +2,7 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
+  {version:"1.27.0",date:"2026-11-21",title:"Astryxによるデザイン刷新",changes:["ライブラリ・編集・設定画面の配色と操作部品をAstryxへ刷新","ダイアログとファイル選択を統一。カスタム色は色選択ダイアログで調整して適用","スライダー・線種・消しゴム方式・数値入力を統一し、色名は選択中だけ表示","上部バーを拡大し、ペンアイコンと色見本を分離。塗りつぶし設定は再押下で表示"],commits:[]},
   {version:"1.26.0",date:"2026-11-20",title:"ライブラリでドラッグして整理",changes:["ノート管理の名称をライブラリへ統一","ノートとフォルダーをドラッグして移動。タッチでは長押しで移動","ノートの名前変更・削除・表紙設定を︙メニューに集約"],commits:[]},
   {version:"1.25.0",date:"2026-11-17",title:"名前付きの色パレットと塗りつぶし",changes:["ペンの色パレットを18色に拡張","蛍光ペンごとに透明度を設定","線で閉じた領域を、選んだ色と透明度で塗りつぶし"],commits:["7d83b05"]},
   {version:"1.23.1",date:"2026-11-11",title:"なげなわの移動とスタイル変更を改善",changes:["細長い選択枠でも中央から移動できる","ペンの選択ボタンを離した後も選択を保持し、枠外を最初に押すと選択を解除","スタイル変更の色に前回の色を表示し、太さの数値をペン設定と統一"],commits:[]},

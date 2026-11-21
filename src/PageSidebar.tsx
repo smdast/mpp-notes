@@ -1,3 +1,4 @@
+import {Popover} from "@astryxdesign/core/Popover";
 import {useEffect,useLayoutEffect,useRef,useState,type PointerEvent as PE} from "react";
 import {createPortal} from "react-dom";
 import {MoreVertical,Plus,Copy,Trash2,FilePenLine,ArrowUp,ArrowDown,PanelLeftClose,PanelLeftOpen} from "lucide-react";
@@ -117,10 +118,10 @@ export function PageSidebar(props:Props){
  <div className="page-add-cell"><button className="page-add-tile" aria-label="ページを追加" onClick={props.onAdd}><Plus size={24}/><span>ページを追加</span></button></div>
  </div>
  {drag&&createPortal(<><div ref={ghost} className="page-drag-ghost" style={{width:drag.width,height:drag.height,transform:`translate3d(${(gesture.current?.x||0)-(gesture.current?.offsetX||0)}px,${(gesture.current?.y||0)-(gesture.current?.offsetY||0)}px,0)`}} aria-hidden="true">{drag.src?<img src={drag.src} alt="" draggable={false}/>:<span className="page-ghost-empty"/>}</div><span className="page-drag-status" role="status">ページを移動中です。空白の位置で離して移動、Escapeで中止します。</span></>,document.body)}
- {menu&&selected&&createPortal(<div ref={popup} className="page-context-menu" role="dialog" aria-label="ページの操作" style={{left:Math.max(8,menu.x),top:menu.y}}>
+ {menu&&selected&&<Popover anchorRef={anchor as React.RefObject<HTMLElement>} isEnabled={false} isOpen onOpenChange={open=>{if(!open)setMenu(null);}} label="ページの操作" width={200} padding={2} hasLightDismiss={false} hasEscapeDismiss={false} content={<div ref={popup} className="page-context-menu">
  <header><b>ページ {props.pages.indexOf(selected)+1}</b><button aria-label="ページメニューを閉じる" onClick={()=>setMenu(null)}>×</button></header>
  <button onClick={()=>{props.onInsert(selected.id,false);setMenu(null);}}><ArrowUp size={15}/>前にページを挿入</button><button onClick={()=>{props.onInsert(selected.id,true);setMenu(null);}}><ArrowDown size={15}/>後にページを挿入</button><button onClick={()=>{props.onDuplicate(selected.id);setMenu(null);}}><Copy size={15}/>ページを複製</button><button disabled={selected.pdfIndex!==undefined} title={selected.pdfIndex!==undefined?"元PDFの背景は保持します":undefined} onClick={()=>{setTemplateId(selected.id);setMenu(null);}}><FilePenLine size={15}/>テンプレートを変更</button><button disabled={props.pages.length===1} onClick={()=>{props.onDelete(selected.id);setMenu(null);}}><Trash2 size={15}/>ページを削除</button>
- </div>,document.body)}
+ </div>}/>}
  {templatePage&&createPortal(<PageTemplateDialog key={templatePage.id} page={templatePage} number={props.pages.indexOf(templatePage)+1} dark={props.dark}
    onChange={patch=>props.onTemplate(templatePage.id,patch)} onApply={()=>props.onApply(templatePage.id)}
    onClose={()=>{setTemplateId(null);anchor.current?.focus();}}/>,document.body)}

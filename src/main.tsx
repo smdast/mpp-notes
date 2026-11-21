@@ -1,3 +1,11 @@
+import {InternationalizationProvider} from "@astryxdesign/core/i18n";
+import jaJP from "@astryxdesign/core/locales/ja-JP.json";
+import {AppDialog} from "./AppDialog";
+import {FilePickerDialog} from "./FilePicker";
+import {TextInput} from "@astryxdesign/core/TextInput";
+import {VStack} from "@astryxdesign/core/VStack";
+import {HStack} from "@astryxdesign/core/HStack";
+import {ActionButton} from "./ActionButton";
 import {useLibraryDrag} from "./useLibraryDrag";
 import {moveLibraryItem} from "./libraryMove";
 import {defaultFill} from "./fill";
@@ -85,7 +93,10 @@ import {
   type PenId,
   type PenSettings,
 } from "./preferences";
-import "./style.css";
+import {Theme} from "@astryxdesign/core/theme";
+import {Button} from "@astryxdesign/core/Button";
+import {noteThemes} from "./astryxThemes";
+import "./astryx.css";
 import { FolderNav } from "./FolderNav";
 import { HelpContent } from "./HelpContent";
 import { SettingsPage } from "./SettingsPage";
@@ -148,10 +159,8 @@ function App() {
     queue = useRef(Promise.resolve()),
     pending = useRef(0),
     failed = useRef(false),
-    writing = useRef(false),
-    pdfInput = useRef<HTMLInputElement>(null),
-    backupInput = useRef<HTMLInputElement>(null);
-  const noteInput=useRef<HTMLInputElement>(null);
+    writing = useRef(false);
+  const [importKind,setImportKind]=useState<"pdf"|"backup"|"note"|null>(null);
   const note = notes.find((n) => n.id === noteId),
     page = note?.pages.find((p) => p.id === pageId) || note?.pages[0],
     pageIndex = note && page ? note.pages.indexOf(page) : 0;
@@ -438,7 +447,7 @@ function App() {
     const key = (e: KeyboardEvent) => {
       if (
         e.defaultPrevented || e.isComposing || editableTarget(e.target) || view!=="editor" || blocked ||
-        dialog || settingsOpen || document.querySelector(".page-context-menu,.page-template-dialog") ||
+        dialog || settingsOpen || document.querySelector("dialog[open],.page-context-menu,.page-template-dialog") ||
         busy || writing.current || conflictPendingRef.current
       )
         return;
@@ -589,21 +598,21 @@ function App() {
     },
   });
   return (
-    <div ref={libraryDrag} className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
+    <InternationalizationProvider locale="ja-JP" messages={{"ja-JP":jaJP}}><Theme theme={noteThemes[preferences.accent]} mode={dark?"dark":"light"}><div ref={libraryDrag} className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
       {view === "library" && !settingsOpen && (
         <aside className="sidebar">
           <a className="brand" href="./">
             <img src="./icon.svg" width="36" height="36" alt=""/>
             <span>MPP <strong>Notes</strong></span>
           </a>
-          <button
+          <ActionButton
             className="new-note"
             disabled={!ready}
             onClick={() => setDialog({ kind: "new", value: "" })}
           >
             <Plus size={18} />
             新しいノート
-          </button>
+          </ActionButton>
           <div className="section-heading">
             ライブラリ <span>{notes.length}</span>
           </div>
@@ -619,21 +628,21 @@ function App() {
             onRename={(from, to) => changeFolder(from, to)}
             onDelete={(name) => changeFolder(name)}
           />
-          <button
+          <ActionButton
             className="import-button"
             disabled={!ready}
-            onClick={() => pdfInput.current?.click()}
+            onClick={() => setImportKind("pdf")}
           >
             <FileUp size={17} />
             PDFを取り込む
-          </button>
-          <button className="import-button" onClick={openSettings}>⚙ 設定</button>
+          </ActionButton>
+          <Button label="設定" icon={<Settings size={16}/>} variant="ghost" onClick={openSettings}/>
         </aside>
       )}
       <main hidden={settingsOpen}>
         {view === "library" ? (
           <Library
-            driveControl={<button className="export-button" onClick={openSettings}>⚙ 設定</button>}
+            driveControl={<Button label="設定" icon={<Settings size={16}/>} variant="ghost" onClick={openSettings}/>}
             themeControl={null}
             dark={dark}
             onCover={(n,file)=>{if(!file){updateNote({...n,coverImage:undefined});return;}void run("表紙画像を読み込み中",async()=>{const image=await imageStroke(file,{width:794,height:1123});const current=notesRef.current.find(x=>x.id===n.id);if(current)updateNote({...current,coverImage:image.image});});}}
@@ -654,8 +663,8 @@ function App() {
             }}
             onMove={(n, f) => {const current=notesRef.current.find(note=>note.id===n.id);if(current)updateNote({...current,folder:f||undefined});}}
             onNew={() => setDialog({ kind: "new", value: "" })}
-            onImport={() => pdfInput.current?.click()}
-            onImportNote={()=>noteInput.current?.click()}
+            onImport={() => setImportKind("pdf")}
+            onImportNote={()=>setImportKind("note")}
             error={error}
             onDismiss={() => setError("")}
             onRetry={retrySave}
@@ -664,7 +673,7 @@ function App() {
           <>
             <header className="topbar">
               <div className="breadcrumb">
-                <button
+                <ActionButton
                   className="library-back"
                   aria-label="ライブラリへ戻る"
                   title="ライブラリへ戻る"
@@ -672,7 +681,7 @@ function App() {
                 >
                   <img src="./icon.svg" width="22" height="22" alt=""/>
                   <span>ライブラリ</span>
-                </button>
+                </ActionButton>
                 <span className="breadcrumb-library">
                   <Breadcrumb folder={note?.folder} />
                   <ChevronRight className="path-separator" size={13} aria-hidden="true"/>
@@ -680,13 +689,13 @@ function App() {
                 <strong>{note?.title || "ノートをはじめよう"}</strong>
                 {note && (
                   <div className="menu-wrap" ref={noteMenu}>
-                    <button
+                    <ActionButton
                       className="icon-button"
                       title="ノートの操作"
                       onClick={() => setMenu(!menu)}
                     >
                       <MoreHorizontal size={18} />
-                    </button>
+                    </ActionButton>
                     {menu && (
                       <div className="dropdown">
                         <label className="folder-move">
@@ -711,15 +720,15 @@ function App() {
                             ))}
                           </select>
                         </label>
-                        <button
+                        <ActionButton
                           onClick={() => {
                             setDialog({ kind: "rename", value: note.title });
                             setMenu(false);
                           }}
                         >
                           名前を変更
-                        </button>
-                        <button
+                        </ActionButton>
+                        <ActionButton
                           className="danger"
                           onClick={() => {
                             setDialog({ kind: "deleteNote" });
@@ -727,7 +736,7 @@ function App() {
                           }}
                         >
                           ノートを削除
-                        </button>
+                        </ActionButton>
                       </div>
                     )}
                   </div>
@@ -740,7 +749,7 @@ function App() {
                   <span>{editorStatus}</span>
                 </span>
                 <ShareMenu disabled={!note||!!busy} onPdf={exportPdfNote} onExport={exportNotebook}/>
-                <button className="icon-button" title="設定" aria-label="設定" onClick={openSettings}><Settings size={17}/></button>
+                <ActionButton className="icon-button" title="設定" aria-label="設定" onClick={openSettings}><Settings size={17}/></ActionButton>
               </div>
             </header>
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color}
@@ -753,10 +762,10 @@ function App() {
             {error && (
               <div className="error-banner" role="alert">
                 <span>{error}</span>
-                {failed.current && <button onClick={retrySave}>再保存</button>}
-                <button title="メッセージを閉じる" onClick={() => setError("")}>
+                {failed.current && <ActionButton onClick={retrySave}>再保存</ActionButton>}
+                <ActionButton title="メッセージを閉じる" onClick={() => setError("")}>
                   <X size={16} />
-                </button>
+                </ActionButton>
               </div>
             )}
             {ready && page && note ? (
@@ -808,23 +817,23 @@ function App() {
                     }}
                   />
                   <div className="floating-zoom">
-                    <button
+                    <ActionButton
                       title="縮小"
                       onClick={() => setZoom(clampZoom(zoom - 0.1))}
                     >
                       <Minus size={15} />
-                    </button>
+                    </ActionButton>
                     <select aria-label="表示倍率" value={Math.round(zoom * 100)} onChange={(e) => setZoom(clampZoom(Number(e.target.value) / 100))}>
                       {[...new Set([25,50,70,100,150,200,300,400,600,800,Math.round(zoom*100)])].sort((a,b) => a-b).map((value) => <option key={value} value={value}>{value}%</option>)}
                     </select>
-                    <button
+                    <ActionButton
                       title="拡大"
                       onClick={() => setZoom(clampZoom(zoom + 0.1))}
                     >
                       <Plus size={15} />
-                    </button>
+                    </ActionButton>
                     <i />
-                    <button
+                    <ActionButton
                       title="幅に合わせる"
                       onClick={() => {
                         const el = document.querySelector(".viewport");
@@ -838,7 +847,7 @@ function App() {
                       }}
                     >
                       <Maximize2 size={15} />
-                    </button>
+                    </ActionButton>
                   </div>
 
                 </section>
@@ -852,45 +861,23 @@ function App() {
                     : "ノートを読み込み中…"}
                 </h1>
                 {ready && (
-                  <button
+                  <ActionButton
                     className="new-note"
                     onClick={() => setDialog({ kind: "new", value: "" })}
                   >
                     <Plus size={18} />
                     新しいノート
-                  </button>
+                  </ActionButton>
                 )}
               </div>
             )}
           </>
         )}
       </main>
-      <input
-        ref={pdfInput}
-        hidden
-        type="file"
-        accept="application/pdf,.pdf"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (f) void pdfFile(f);
-        }}
-      />
-      <input
-        ref={backupInput}
-        hidden
-        type="file"
-        accept="application/zip,.zip"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (f) void restore(f);
-        }}
-      />
-      <input ref={noteInput} hidden type="file" accept={`${NOTE_EXTENSION},${NOTE_MIME}`} aria-label="ノートファイル" onChange={e=>{const file=e.target.files?.[0];e.target.value="";if(file)void importNotebook(file);}}/>
+      {importKind&&<FilePickerDialog label={importKind==="pdf"?"PDFを取り込む":importKind==="backup"?"バックアップを復元":"ノートを取り込む"} accept={importKind==="pdf"?"application/pdf,.pdf":importKind==="backup"?"application/zip,.zip":`${NOTE_EXTENSION},${NOTE_MIME}`} onClose={()=>setImportKind(null)} onSelect={file=>{if(importKind==="pdf")void pdfFile(file);else if(importKind==="backup")void restore(file);else void importNotebook(file);}}/>}
       {settingsOpen && <SettingsPage ready={ready} onApply={view==="editor"&&note?.pages.some(p=>p.pdfIndex===undefined)?()=>{if(!note||!page)return;const p=preferencesRef.current;updateNote({...note,pages:applyPaperTemplate(note.pages,{...page,pdfIndex:undefined,paper:p.paperPattern,paperColor:p.paperColor==="auto"?(dark?"#1e2822":"#fffefa"):p.paperColor,backgroundImage:p.paperImage},dark)});}:undefined} value={preferences} onChange={storePreferences} onClose={closeSettings}
         sync={<SyncPanel method={syncMethod} onChange={changeSyncMethod} drive={drive} folder={folderSync} ready={ready}/>}
-        backup={backupAction} restore={()=>backupInput.current?.click()} help={<HelpContent/>}
+        backup={backupAction} restore={()=>setImportKind("backup")} help={<HelpContent/>}
         pwa={<PWAControls canReload={()=>pending.current===0&&!failed.current&&!writing.current&&!syncSaving.current}/>} onError={setError} error={error}/>}
       {busy && (
         <div className="busy-overlay" role="status">
@@ -899,177 +886,14 @@ function App() {
         </div>
       )}
       {conflictPending&&!busy&&<ConflictDialog key={conflictPending.conflict.key} conflict={conflictPending.conflict} dark={dark} onChoose={chooseConflict} onDefer={deferConflict}/>}
-      {blocked && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <BookOpen />
-            <h2>別のタブで開いています</h2>
-            <p>
-              ノートを安全に保存するため、編集は1つのタブで行ってください。ほかのタブを閉じて再読み込みしてください。
-            </p>
-            <button className="primary" onClick={() => location.reload()}>
-              再読み込み
-            </button>
-          </div>
-        </div>
-      )}
-      {dialog && (
-        <div
-          className="modal-backdrop"
-          onPointerDown={e=>{if(e.target===e.currentTarget)setDialog(null);}}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setDialog(null);
-          }}
-        >
-          <form
-            className={"modal " + (dialog.kind === "help" ? "help-modal" : "")}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="dialog-title"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submitDialog();
-            }}
-          >
-            <button
-              type="button"
-              className="modal-close icon-button"
-              title="閉じる"
-              onClick={() => setDialog(null)}
-            >
-              <X size={18} />
-            </button>
-            <span className="modal-symbol">
-              <PenLine size={23} />
-            </span>
-            <h2 id="dialog-title">
-              {
-                {
-                  new: "新しいノート",
-                  rename: "ノートの名前を変更",
-                  deleteNote: "ノートを削除しますか？",
-                  deletePage: "ページを削除しますか？",
-                  help: "MPP Notesの使い方",
-                }[dialog.kind]
-              }
-            </h2>
-            {["new", "rename"].includes(dialog.kind) ? (
-              <>
-                <p>思いついたことを、自由に書き留めましょう。</p>
-                <label className="title-label">
-                  ノート名
-                  <input
-                    autoFocus
-                    required
-                    maxLength={300}
-                    placeholder="例：アイデアのスケッチ"
-                    value={dialog.value || ""}
-                    onChange={(e) =>
-                      setDialog({ ...dialog, value: e.target.value })
-                    }
-                  />
-                </label>
-              </>
-            ) : dialog.kind === "help" ? (
-              <div className="help-content">
-                <p>
-                  <b>連続ページ</b>
-                  　上下のスクロールだけでページ間を移動できます。左のページ一覧で任意のページへジャンプします。
-                </p>
-                <p>
-                  <b>ペン設定</b>
-                  　3本のペンと蛍光ペンそれぞれに色・太さ・筆圧の設定を保存します。
-                </p>
-                <p>
-                  <b>図形補正</b>
-                  　オンにすると、書き終えた直線・円・楕円・長方形を整えます。通常の筆記ではオフにもでき、補正後はUndoで消せます。
-                </p>
-                <p>
-                  <b>書く</b>
-                  　MPPペンで用紙に書けます。筆圧で線の太さが変わります。マウスでもそのまま描画できます。
-                </p>
-                <p>
-                  <b>移動する</b>
-                  　指で移動、2本指で拡大縮小。「移動」ツールならマウスでも移動できます。
-                </p>
-                <p>
-                  <b>ツール</b>　P：ペン / H：蛍光ペン / E：消しゴム /
-                  L：なげなわ /
-                  V：移動。Ctrl+Zで元に戻せます。対応端末ではペンの消しゴム側・サイドボタンでも消せます。
-                </p>
-                <p>
-                  <b>保存する</b>
-                  　このブラウザーに自動保存します。ブラウザーデータの削除で消えるため、定期的にZIPバックアップを保存してください。別端末へはZIPを復元して移せます。
-                </p>
-                <p>
-                  <b>PDF</b>　パスワード保護のない100
-                  MB以下のPDFを取り込めます。書き出したPDFの手書きは画像になります。編集の続きはこのアプリかZIPバックアップを使ってください。
-                </p>
-                <p>
-                  <b>消す・選ぶ</b>
-                  　消しゴムは線全体とエリア消去を切り替えられます。なげなわで囲んだ線を選び、選択枠の内側をドラッグして移動します。Ctrl+Zで戻せます。
-                </p>
-                <p>
-                  <b>ページを追加</b>
-                  　最終ページの一番下で指を上にスワイプ。「離して新しいページを追加」が出てから指を離すと追加します。
-                </p>
-                <p>
-                  <b>フォルダー</b>
-                  　ライブラリページで階層フォルダーを作成・変更できます。配下もまとめて移動・名前変更でき、削除時もノートは親フォルダーに残ります。
-                </p>
-                <p>
-                  <b>オフライン</b>
-                  　PWAをインストールできます。初回のオフライン準備が完了した後は、通信なしでもノートとPDFを開けます。
-                </p>
-                <p className="help-note">
-                  MPPの筆圧・手のひら除外・ボタンの認識は、端末・ドライバー・ブラウザーに依存します。Google
-                  Driveを接続するとノートとフォルダーを同期します。未接続では端末内に保存します。
-                </p>
-              </div>
-            ) : (
-              <p>
-                この操作は取り消せません。必要な内容は先にバックアップしてください。
-              </p>
-            )}
-            <div className="modal-actions">
-              {dialog.kind === "help" ? (
-                <button
-                  className="primary"
-                  type="button"
-                  onClick={() => setDialog(null)}
-                >
-                  書きはじめる
-                </button>
-              ) : (
-                <>
-                  <button type="button" onClick={() => setDialog(null)}>
-                    キャンセル
-                  </button>
-                  <button
-                    type="submit"
-                    className={
-                      dialog.kind.startsWith("delete")
-                        ? "danger-button"
-                        : "primary"
-                    }
-                    disabled={
-                      ["new", "rename"].includes(dialog.kind) &&
-                      !dialog.value?.trim()
-                    }
-                  >
-                    {dialog.kind.startsWith("delete")
-                      ? "削除する"
-                      : dialog.kind === "new"
-                        ? "ノートを作成"
-                        : "変更する"}
-                  </button>
-                </>
-              )}
-            </div>
-          </form>
-        </div>
-      )}
-    </div>
+      {blocked&&<AppDialog title="別のタブで開いています" onClose={()=>{}} required><p>ノートを安全に保存するため、編集は1つのタブで行ってください。ほかのタブを閉じて再読み込みしてください。</p><Button label="再読み込み" variant="primary" onClick={()=>location.reload()}/></AppDialog>}
+      {dialog&&<AppDialog title={ {new:"新しいノート",rename:"ノートの名前を変更",deleteNote:"ノートを削除しますか？",deletePage:"ページを削除しますか？",help:"MPP Notesの使い方"}[dialog.kind]} onClose={()=>setDialog(null)} width={dialog.kind==="help"?620:440}>
+        <VStack as="form" gap={5} onSubmit={e=>{e.preventDefault();submitDialog();}}>
+        {["new","rename"].includes(dialog.kind)?<TextInput label="ノート名" hasAutoFocus isRequired placeholder="例：アイデアのスケッチ" value={dialog.value||""} onChange={value=>setDialog({...dialog,value:value.slice(0,300)})}/>:dialog.kind==="help"?<HelpContent/>:<p>この操作は取り消せません。必要な内容は先にバックアップしてください。</p>}
+        <HStack gap={2} hAlign="end">{dialog.kind==="help"?<Button label="閉じる" onClick={()=>setDialog(null)}/>:<><Button label="キャンセル" onClick={()=>setDialog(null)}/><Button type="submit" label={dialog.kind.startsWith("delete")?"削除する":dialog.kind==="new"?"ノートを作成":"変更する"} variant={dialog.kind.startsWith("delete")?"destructive":"primary"} isDisabled={["new","rename"].includes(dialog.kind)&&!dialog.value?.trim()}/></>}</HStack>
+        </VStack>
+      </AppDialog>}
+    </div></Theme></InternationalizationProvider>
   );
 }
 document.addEventListener("contextmenu",event=>event.preventDefault());

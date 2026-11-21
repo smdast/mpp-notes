@@ -1,5 +1,10 @@
-import {useState,useRef,useEffect,useLayoutEffect} from "react";
-import {createPortal} from "react-dom";
+import {Popover} from "@astryxdesign/core/Popover";
+import {CustomColor} from "./CustomColor";
+import {SegmentedControl,SegmentedControlItem} from "@astryxdesign/core/SegmentedControl";
+import {Slider} from "@astryxdesign/core/Slider";
+import {ActionButton} from "./ActionButton";
+import {Switch} from "@astryxdesign/core/Switch";
+import {useState,useRef,useEffect} from "react";
 import {LineStylePicker} from "./LineStylePicker";
 import {lineFlags,lineStyle} from "./strokeStyle";
 import {useDismiss} from "./useDismiss";
@@ -27,63 +32,58 @@ export function EditorToolbar(props: Props) {
   const settings = preferences.pens[preferences.activePen];
   const autoColor=settings.autoColor??defaultAutoPenColor(settings,preferences.activePen);
   const drawing = tool === "pen" || tool === "marker";
-  const [open,setOpen]=useState(false),[position,setPosition]=useState({left:12,top:100});
+  const [open,setOpen]=useState(false);
   const panel=useRef<HTMLDivElement>(null),anchor=useRef<HTMLButtonElement|null>(null);
-  useDismiss(open,[panel,anchor],()=>setOpen(false),tool!=="fill");
+  useDismiss(open,[panel,anchor],()=>setOpen(false),true);
   const root=useRef<HTMLDivElement>(null),pendingNew=useRef<PenId|null>(null);
   useEffect(()=>{
     if(pendingNew.current===preferences.activePen){
       const button=root.current?.querySelector<HTMLButtonElement>(`[data-pen-id="${preferences.activePen}"]`);
       if(button){anchor.current=button;button.scrollIntoView({block:"nearest",inline:"nearest"});setOpen(true);button.focus({preventScroll:true});}
       pendingNew.current=null;
-    }else setOpen(tool==="fill");
+    }else setOpen(false);
   },[tool,preferences.activePen]);
-  useLayoutEffect(()=>{
-    if(!open)return;
-    const update=()=>{const r=anchor.current?.getBoundingClientRect();if(r)setPosition({left:Math.max(12,Math.min(innerWidth-Math.min(304,innerWidth-24)-12,r.left)),top:r.bottom+12});};
-    update();window.addEventListener("resize",update);window.addEventListener("scroll",update,true);return()=>{window.removeEventListener("resize",update);window.removeEventListener("scroll",update,true);};
-  },[open]);
   const settingsLabel=tool==="fill"?"塗りつぶしの設定":tool==="marker"?"蛍光ペンの設定":tool==="pen"?"ペンの設定":"消しゴムの設定";
   return <div ref={root} className="toolbar editor-toolbar">
     <div className="history-tools" role="group" aria-label="編集操作">
-      <button className="tool" title={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} aria-label={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} disabled={!props.canUndo} onClick={() => props.onUndo()}><Undo2 size={18}/></button>
-      <button className="tool" title={shortcutTitle("やり直し",preferences.shortcuts,"redo")} aria-label={shortcutTitle("やり直し",preferences.shortcuts,"redo")} disabled={!props.canRedo} onClick={() => props.onUndo(true)}><Redo2 size={18}/></button>
-      <button className="tool" title={shortcutTitle("貼り付け",preferences.shortcuts,"paste")} aria-label="貼り付け" onClick={() => window.dispatchEvent(new Event("mpp-paste"))}><ClipboardPaste size={18}/></button>
+      <ActionButton className="tool" title={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} aria-label={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} disabled={!props.canUndo} onClick={() => props.onUndo()}><Undo2 size={18}/></ActionButton>
+      <ActionButton className="tool" title={shortcutTitle("やり直し",preferences.shortcuts,"redo")} aria-label={shortcutTitle("やり直し",preferences.shortcuts,"redo")} disabled={!props.canRedo} onClick={() => props.onUndo(true)}><Redo2 size={18}/></ActionButton>
+      <ActionButton className="tool" title={shortcutTitle("貼り付け",preferences.shortcuts,"paste")} aria-label="貼り付け" onClick={() => window.dispatchEvent(new Event("mpp-paste"))}><ClipboardPaste size={18}/></ActionButton>
     </div>
     <div className="toolbar-content">
       <div className="tool-picker">
         {(["pen","marker"] as PenKind[]).map(kind=><div className="tool-group pen-presets pen-family" role="group" aria-label={kind==="pen"?"ペン":"蛍光ペン"} key={kind}>
           {penIds(preferences,kind).map((id,i)=>{
             const label=`${kind==="marker"?"蛍光ペン":"ペン"}${i+1}`;
-            return <button key={id} data-pen-id={id} className={"tool pen-preset "+(drawing&&preferences.activePen===id?"active":"")}
+            return <ActionButton key={id} data-pen-id={id} className={"tool pen-preset "+(drawing&&preferences.activePen===id?"active":"")}
               aria-label={label} aria-pressed={drawing&&preferences.activePen===id} title={label}
               aria-expanded={drawing&&preferences.activePen===id&&open} aria-controls="tool-settings"
               onClick={e=>{anchor.current=e.currentTarget;if(drawing&&preferences.activePen===id)setOpen(v=>!v);else{setOpen(false);props.onPen(id);}}}
-              style={{color:penColor(preferences.pens[id],id,dark)}}>
+              style={{"--pen-color":penColor(preferences.pens[id],id,dark)} as React.CSSProperties}>
               {kind==="marker"?<Highlighter size={19}/>:<PenLine size={19}/>}<small>{i+1}</small>
-            </button>;
+            </ActionButton>;
           })}
-          <button className="tool add-pen" aria-label={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} title={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} onClick={()=>{pendingNew.current=props.onAddPen(kind);setOpen(false);}}><Plus size={17}/></button>
+          <ActionButton className="tool add-pen" aria-label={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} title={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} onClick={()=>{pendingNew.current=props.onAddPen(kind);setOpen(false);}}><Plus size={17}/></ActionButton>
         </div>)}
         <div className="tool-group">
           {([{id:"eraser",label:shortcutTitle("消しゴム",preferences.shortcuts,"eraser"),Icon:Eraser},{id:"fill",label:"塗りつぶし",Icon:PaintBucket},{id:"lasso",label:shortcutTitle("なげなわ選択",preferences.shortcuts,"lasso"),Icon:Lasso},{id:"hand",label:shortcutTitle("移動",preferences.shortcuts,"hand"),Icon:Hand}] as const).map(({id,label,Icon}) =>
-            <button key={id} className={"tool " + (tool === id ? "active" : "")} aria-label={label} aria-pressed={tool === id} title={label} aria-expanded={(id === "eraser" || id === "fill") ? tool === id && open : undefined} aria-controls={(id === "eraser" || id === "fill") ? "tool-settings" : undefined} onClick={e => {anchor.current=e.currentTarget;if((id === "eraser" || id === "fill") && tool === id)setOpen(v=>!v);else{setOpen(false);props.onTool(id);}}}><Icon size={19}/></button>)}
+            <ActionButton key={id} className={"tool " + (tool === id ? "active" : "")} aria-label={label} aria-pressed={tool === id} title={label} aria-expanded={(id === "eraser" || id === "fill") ? tool === id && open : undefined} aria-controls={(id === "eraser" || id === "fill") ? "tool-settings" : undefined} onClick={e => {anchor.current=e.currentTarget;if((id === "eraser" || id === "fill") && tool === id)setOpen(v=>!v);else{setOpen(false);props.onTool(id);}}}><Icon size={19}/></ActionButton>)}
         </div>
       </div>
-      {open && (drawing || tool === "eraser" || tool === "fill") && createPortal(<div ref={panel} id="tool-settings" role="dialog" aria-label={settingsLabel} className="tool-settings-popover" style={{...position,maxHeight:`calc(100dvh - ${position.top+12}px)`}}>
-        <header><strong>{settingsLabel}</strong><button aria-label="ツール設定を閉じる" onClick={()=>{setOpen(false);anchor.current?.focus();}}><X size={18}/></button></header>
+      {open && (drawing || tool === "eraser" || tool === "fill") && <Popover anchorRef={anchor as React.RefObject<HTMLElement>} isEnabled={false} isOpen={open} onOpenChange={setOpen} label={settingsLabel} width={304} padding={5} hasLightDismiss={false} hasEscapeDismiss={false} content={<div ref={panel} id="tool-settings" className="tool-settings-popover">
+        <header><strong>{settingsLabel}</strong><ActionButton aria-label="ツール設定を閉じる" onClick={()=>{setOpen(false);anchor.current?.focus();}}><X size={18}/></ActionButton></header>
       {drawing && <div className="context-controls" aria-label="ペンの設定">
         <SettingSwitch label="自動切り替え" Icon={Contrast} checked={autoColor.enabled} onChange={enabled=>props.onSettings({autoColor:{...autoColor,enabled}})}/>
         {autoColor.enabled?<div className="auto-pen-colors" role="group" aria-label="背景別のペン色">
-          {(["onLight","onDark"] as const).map(key=><label key={key}>{key==="onLight"?"明るい背景":"暗い背景"}<input type="color" value={autoColor[key]} onInput={e=>props.onSettings({autoColor:{...autoColor,[key]:e.currentTarget.value}})}/></label>)}
+          {(["onLight","onDark"] as const).map(key=><label key={key}>{key==="onLight"?"明るい背景":"暗い背景"}<CustomColor value={autoColor[key]} onChange={color=>props.onSettings({autoColor:{...autoColor,[key]:color}})}/></label>)}
         </div>:<NamedPalette dark={dark} color={color} onColor={props.onColor}/>}
         {tool==="marker"&&<Transparency opacity={settings.opacity??.27} onOpacity={opacity=>props.onSettings({opacity})}/>}
-        <label className="size-slider pen-size-slider"><span>太さ</span><input type="range" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(e) => props.onSettings({width:Number(e.target.value) / 5})}/><output>{Math.round(settings.width * 5)}</output></label>
+        <Slider containerClassName="notes-slider" label="太さ" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(width:number)=>props.onSettings({width:width/5})} valueDisplay="text" width="100%"/>
         <LineStylePicker value={lineStyle(settings)} onChange={line=>props.onSettings(lineFlags(line))}/>
         <SettingSwitch label="筆圧検知" text="筆圧" Icon={Gauge} checked={settings.pressure} onChange={pressure=>props.onSettings({pressure})}/>
         <SettingSwitch label="図形補正" hint="補正までの時間は操作設定で変更できます" Icon={Shapes} checked={settings.shapeCorrection!==false} onChange={shapeCorrection=>props.onSettings({shapeCorrection})}/>
         {tool === "pen" && <SettingSwitch label="こすって消去" Icon={ScanLine} checked={preferences.scratchErase} onChange={props.onScratchErase}/>}
-        <button className="delete-pen" disabled={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1} title={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1?"最後の1本は削除できません":undefined} onClick={()=>{setOpen(false);props.onDeletePen();}}><Trash2 size={16}/>{tool==="marker"?"蛍光ペンを削除":"ペンを削除"}</button>
+        <ActionButton className="delete-pen" disabled={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1} title={penIds(preferences,"pen").length+penIds(preferences,"marker").length<=1?"最後の1本は削除できません":undefined} onClick={()=>{setOpen(false);props.onDeletePen();}}><Trash2 size={16}/>{tool==="marker"?"蛍光ペンを削除":"ペンを削除"}</ActionButton>
       </div>}
       {tool==="fill"&&<div className="context-controls">
         <NamedPalette dark={dark} color={props.fill.color} onColor={color=>props.onFill({...props.fill,color})}/>
@@ -91,19 +91,17 @@ export function EditorToolbar(props: Props) {
         <p className="fill-hint">線で囲まれた領域の内側をタップします。</p>
       </div>}
       {tool === "eraser" && <div className="context-controls eraser-options" aria-label="消しゴムの設定">
-        <div className="eraser-modes" role="group" aria-label="消しゴムの種類">
-          <button aria-pressed={props.eraserMode === "stroke"} onClick={() => props.onEraserMode("stroke")}>ストローク</button>
-          <button aria-pressed={props.eraserMode === "area"} onClick={() => props.onEraserMode("area")}>エリア</button>
-        </div>
-        <label className="size-slider"><span>大きさ</span><input type="range" aria-label="消しゴムのサイズ" min={1} max={120} step={1} value={props.eraserSize} onChange={(e) => props.onEraserSize(Number(e.target.value))}/><output>{props.eraserSize} px</output></label>
+        <SegmentedControl label="消しゴムの種類" value={props.eraserMode} onChange={v=>props.onEraserMode(v as EraserMode)} layout="fill"><SegmentedControlItem value="stroke" label="ストローク"/><SegmentedControlItem value="area" label="エリア"/></SegmentedControl>
+
+        <Slider containerClassName="notes-slider" label="大きさ" aria-label="消しゴムのサイズ" min={1} max={120} step={1} value={props.eraserSize} onChange={props.onEraserSize} formatValue={n=>`${n} px`} valueDisplay="text" width="100%"/>
       </div>}
-      </div>,document.body)}
+      </div>}/>}
     </div>
   </div>;
 }
 
 function SettingSwitch({label,text=label,hint,Icon,checked,onChange}:{label:string;text?:string;hint?:string;Icon:LucideIcon;checked:boolean;onChange:(value:boolean)=>void}){
- return <label className="setting-switch" title={hint}><span><Icon size={17} aria-hidden="true"/>{text}</span><input type="checkbox" role="switch" aria-label={label} checked={checked} onChange={e=>onChange(e.target.checked)}/><span className="switch-track" aria-hidden="true"/></label>;
+ return <Switch label={text} aria-label={label} labelIcon={<Icon size={17}/>} labelTooltip={hint} value={checked} onChange={onChange} labelPosition="start" labelSpacing="spread" width="100%"/>;
 }
 
 const palette = [
@@ -117,23 +115,19 @@ const palette = [
 
 function NamedPalette({dark,color,onColor}:{dark:boolean;color:string;onColor:(color:string)=>void}){
   return <div className="named-palette" role="group" aria-label="色パレット">
+    <output className="palette-current" aria-label="選択中の色">{palette.find(([,light,night])=>color===(dark?night:light))?.[0]??"カスタム色"}</output>
     {palette.map(([name,light,night])=>{
       const swatch=dark?night:light;
       return <button key={name} type="button" title={name} aria-pressed={color===swatch} onClick={()=>onColor(swatch)}>
         <span className={"swatch "+(color===swatch?"chosen":"")} style={{"--swatch":swatch} as React.CSSProperties}/>
-        <span>{name}</span>
+
       </button>;
     })}
-    <label>カスタム色<input type="color" value={color} onInput={event=>onColor(event.currentTarget.value)}/></label>
+    <CustomColor value={color} onChange={onColor}/>
   </div>;
 }
 
 function Transparency({opacity,onOpacity}:{opacity:number;onOpacity:(value:number)=>void}){
   const value=Math.round((1-opacity)*100);
-  return <label className="size-slider">
-    <span>透明度</span>
-    <input type="range" min={0} max={100} value={value} aria-valuetext={`${value}%`}
-      onChange={event=>onOpacity((100-event.currentTarget.valueAsNumber)/100)}/>
-    <output>{value}%</output>
-  </label>;
+  return <Slider containerClassName="notes-slider" label="透明度" min={0} max={100} step={1} value={value} formatValue={n=>`${n}%`} valueDisplay="text" onChange={(n:number)=>onOpacity((100-n)/100)} width="100%"/>;
 }
