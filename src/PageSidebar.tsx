@@ -42,6 +42,7 @@ export function PageSidebar(props:Props){
   return()=>{document.removeEventListener("pointerdown",close,true);window.removeEventListener("keydown",key);window.removeEventListener("resize",reset);window.removeEventListener("popstate",reset);window.removeEventListener("blur",cancel);};
  },[]);
  useLayoutEffect(()=>{
+  if(!drag){layout.current.clear();return;}
   const next=new Map<string,DOMRect>();
   for(const el of list.current?.querySelectorAll<HTMLElement>("[data-side-page]")||[]){
    el.getAnimations().forEach(a=>a.cancel());const r=el.getBoundingClientRect(),id=el.dataset.sidePage!;next.set(id,r);
@@ -98,6 +99,7 @@ export function PageSidebar(props:Props){
  }
  function open(e:React.MouseEvent<HTMLButtonElement>,id:string){anchor.current=e.currentTarget;const r=e.currentTarget.getBoundingClientRect();props.onSelect(id);setMenu({id,x:Math.min(innerWidth-180,Math.max(8,r.right+8)),y:Math.max(8,Math.min(innerHeight-235,r.top))});}
  const templatePage=props.pages.find(p=>p.id===templateId),selected=props.pages.find(p=>p.id===menu?.id);
+ const pageIndices=new Map(props.pages.map((p,i)=>[p.id,i]));
  const tiles:(Page|null)[]=drag?props.pages.filter(p=>p.id!==drag.id):props.pages;
  if(drag)tiles.splice(drag.slot,0,null);
  return <aside className={"page-strip "+(props.collapsed?"pages-collapsed":"")} aria-label="ページ一覧">
@@ -105,7 +107,7 @@ export function PageSidebar(props:Props){
  <div id="page-preview-list" hidden={props.collapsed} ref={list} className={"page-list page-grid "+(drag?"sorting":"")} onScroll={()=>setMenu(null)} onContextMenu={e=>{if(gesture.current)e.preventDefault();}} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)} onPointerDownCapture={e=>{if(gesture.current&&gesture.current.pointer!==e.pointerId)cancel();}}>
  {tiles.map(p=>{
   if(!p)return <div key="drop-slot" className="page-drop-cell" aria-label="移動先"><span className="page-drop-slot" aria-hidden="true"/></div>;
-  const i=props.pages.indexOf(p);
+  const i=pageIndices.get(p.id)!;
   return <div key={p.id} data-side-page={p.id} className="page-item">
   <button className={"page-thumb "+(props.active===p.id?"current":"")} aria-label={`ページ ${i+1}`} aria-current={props.active===p.id?"page":undefined} title={`長押しで並び替え${shortcutHint(props.shortcuts,"pageLeft")?"・"+shortcutHint(props.shortcuts,"pageLeft")+" などで移動":""}`} onClick={e=>{if(e.detail===0)props.onSelect(p.id);}} onPointerDown={e=>down(e,p.id)} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{
    const action=shortcutAction(props.shortcuts,e.nativeEvent),delta=action==="pageLeft"?-1:action==="pageRight"?1:action==="pageUp"?-2:action==="pageDown"?2:0,target=props.pages[i+delta];

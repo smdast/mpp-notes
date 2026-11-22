@@ -1,4 +1,8 @@
+import {observePage} from "./pageVisibility";
+import {previewWork} from "./previewWork";
 import {
+  memo,
+  useMemo,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -65,9 +69,11 @@ type Props = {
   onError: (s: string) => void;
   onWriting: (b: boolean) => void;
 };
-function PageSlot({
+type PageSettings=Omit<Props,"note"|"activePageId"|"jump"|"setZoom"|"onWriting"|"onAddPage"|"onCommitPages"|"settingsOpen"|"direction">&{pageCount:number};
+const PageSlot=memo(function PageSlot({
   page,
   index,
+  isActive,
   root,
   document,
   props,
@@ -77,9 +83,10 @@ function PageSlot({
 }: {
   page: Page;
   index: number;
+  isActive:boolean;
   root: RefObject<HTMLDivElement | null>;
   document?: PDFDocumentProxy;
-  props: Props;
+  props: PageSettings;
   onWriting: (id: string, b: boolean) => void;
   incoming?:IncomingSelection;
   onSelectionDrag:(id:string,drag:SelectionDrag)=>string|undefined;
@@ -88,19 +95,7 @@ function PageSlot({
     [visible, setVisible] = useState(index === 0),
     [pinned, setPinned] = useState(false);
   useEffect(() => {
-    let deferred:boolean|undefined;
-    const v=root.current;
-    const settled=()=>{if(deferred!==undefined){setVisible(deferred);deferred=undefined;}};
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if(v?.classList.contains("zooming"))deferred=entries[0].isIntersecting;
-        else setVisible(entries[0].isIntersecting);
-      },
-      { root: root.current, rootMargin: "600px" },
-    );
-    if (slot.current) observer.observe(slot.current);
-    v?.addEventListener("notebook-zoom-settled",settled);
-    return () => {observer.disconnect();v?.removeEventListener("notebook-zoom-settled",settled);};
+    if(root.current&&slot.current)return observePage(root.current,slot.current,setVisible);
   }, [root]);
   return (
     <div
@@ -113,7 +108,7 @@ function PageSlot({
       }}
     >
       <div className="page-label">
-        {index + 1} / {props.note.pages.length}
+        {index + 1} / {props.pageCount}
       </div>
       {visible || pinned ? (
         <Sheet
@@ -123,7 +118,7 @@ function PageSlot({
           page={page}
           onPasted={props.onPasted}
           paperColor={pagePaperColor(page, props.dark)}
-          isActive={props.activePageId === page.id}
+          isActive={isActive}
           pdfDocument={document}
           zoom={props.zoom}
           tool={props.tool}
@@ -164,7 +159,7 @@ function PageSlot({
       )}
     </div>
   );
-}
+});
 export function ContinuousNotebook(props: Props) {
   const [initialView]=useState(()=>readNoteView(props.note.id));
   const viewPosition=useRef<NoteView|undefined>(initialView),positionTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
@@ -174,6 +169,27 @@ export function ContinuousNotebook(props: Props) {
   const dragFrame=useRef(0),dropTarget=useRef<HTMLElement|null>(null),dragTime=useRef(0);
   const [incoming,setIncoming]=useState<IncomingSelection>();
   const latest=useRef(props);latest.current=props;
+  const slotEvents=useRef({writing,selectionDrag});slotEvents.current={writing,selectionDrag};
+  const callbacks=useMemo(()=>({
+    onActive:(id:string)=>latest.current.onActive(id),
+    onCommit:(id:string,strokes:Stroke[])=>latest.current.onCommit(id,strokes),
+    onError:(message:string)=>latest.current.onError(message),
+    onPasted:()=>latest.current.onPasted(),
+    onWriting:(id:string,b:boolean)=>slotEvents.current.writing(id,b),
+    onSelectionDrag:(id:string,drag:SelectionDrag)=>slotEvents.current.selectionDrag(id,drag),
+  }),[]);
+  const pageSettings=useMemo<PageSettings>(()=>({
+    ...callbacks,pageCount:props.note.pages.length,
+    dark:props.dark,zoom:props.zoom,tool:props.tool,color:props.color,autoColor:props.autoColor,
+    markerOpacity:props.markerOpacity,fill:props.fill,width:props.width,pressure:props.pressure,
+    wavy:props.wavy,dotted:props.dotted,dashed:props.dashed,shapeCorrection:props.shapeCorrection,
+    shapeHoldMs:props.shapeHoldMs,scratchErase:props.scratchErase,eraserMode:props.eraserMode,
+    eraserSize:props.eraserSize,selectionButton:props.selectionButton,eraserButton:props.eraserButton,shortcuts:props.shortcuts,
+  }),[callbacks,props.note.pages.length,props.dark,props.zoom,props.tool,props.color,props.autoColor,
+    props.markerOpacity,props.fill,props.width,props.pressure,props.wavy,props.dotted,props.dashed,
+    props.shapeCorrection,props.shapeHoldMs,props.scratchErase,props.eraserMode,props.eraserSize,
+    props.selectionButton,props.eraserButton,props.shortcuts]);
+
   const viewport = useRef<HTMLDivElement>(null),
     [document, setDocument] = useState<PDFDocumentProxy>(),
     [pull, setPull] = useState(0),
@@ -186,6 +202,7 @@ export function ContinuousNotebook(props: Props) {
   const { note, zoom, onActive, onError } = props;
   const horizontal=props.direction==="horizontal";
   const previousDirection=useRef(props.direction);
+  const layoutKey=useMemo(()=>note.pages.map(p=>`${p.id}:${p.width}:${p.height}`).join("|"),[note.pages]);
   const maxPageWidth=Math.max(...note.pages.map(p=>p.width));
   const maxPageHeight=Math.max(...note.pages.map(p=>p.height));
   const liveZoom=useRef(zoom),pinchAnchor=useRef<PinchAnchor|null>(null),zoomFrame=useRef(0);
@@ -332,7 +349,7 @@ export function ContinuousNotebook(props: Props) {
     previousZoom.current = zoom;
     if(v)viewportSize.current={width:v.clientWidth,height:v.clientHeight};
     rememberPosition();
-  }, [zoom, note.pages]);
+  }, [zoom, layoutKey]);
   useLayoutEffect(()=>{
     const v=viewport.current;
     if(!v||props.settingsOpen||previousDirection.current===props.direction)return;
@@ -403,21 +420,22 @@ export function ContinuousNotebook(props: Props) {
     () => () => {
       cancelAnimationFrame(frame.current);
       cancelAnimationFrame(zoomFrame.current);
-      props.onWriting(false);
+      previewWork.setWriting(false);props.onWriting(false);
     },
     [],
   );
   function writing(id: string, b: boolean) {
     if (b) {
       motion.current?.stop();
-      finishZoom();
+      if(pinchAnchor.current||pendingZoom.current||liveZoom.current!==latest.current.zoom)finishZoom();
       drawing.current.add(id);
       touches.current.clear();
       pageSwipe.current=null;
       gesture.current = null;
       setPull(0);
     } else drawing.current.delete(id);
-    props.onWriting(drawing.current.size > 0);
+    previewWork.setWriting(drawing.current.size>0);
+    latest.current.onWriting(drawing.current.size > 0);
   }
   function scroll() {
     const v=viewport.current;
@@ -595,12 +613,13 @@ export function ContinuousNotebook(props: Props) {
             key={page.id}
             page={page}
             index={index}
+            isActive={props.activePageId===page.id}
             root={viewport}
             document={document}
-            props={props}
-            onWriting={writing}
-            incoming={incoming}
-            onSelectionDrag={selectionDrag}
+            props={pageSettings}
+            onWriting={callbacks.onWriting}
+            incoming={incoming?.pageId===page.id?incoming:undefined}
+            onSelectionDrag={callbacks.onSelectionDrag}
           />
         ))}
       </div>

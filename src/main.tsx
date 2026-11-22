@@ -422,9 +422,10 @@ function App() {
     return () => window.removeEventListener("beforeunload", listener);
   }, []);
   function updateNote(next: Note) {
+    const previous=notesRef.current.find(n=>n.id===next.id);
     next = { ...next, updated: Date.now() };
     setNotes((prev) => prev.map((n) => (n.id === next.id ? next : n)));
-    enqueue(() => saveNote(next));
+    enqueue(() => saveNote(next,previous));
   }
   function commit(strokes: Stroke[], targetId = page?.id) {
     if(targetId)commitPages([{id:targetId,strokes}]);
