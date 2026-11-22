@@ -1,3 +1,4 @@
+import {Selector} from "@astryxdesign/core/Selector";
 import {Popover} from "@astryxdesign/core/Popover";
 import {FilePickerDialog} from "./FilePicker";
 import {useRef,useState} from "react";
@@ -26,12 +27,7 @@ export function LibraryNoteMenu({note,folders,onRename,onDelete,onCover,onMove}:
       <button onClick={()=>run(onRename)}><PenLine size={16}/>名前変更</button>
       <button onClick={()=>{setCoverOpen(true);setOpen(false);}}><ImagePlus size={16}/>表紙画像を選択</button>
       {note.coverImage&&<button onClick={()=>run(()=>onCover())}><RotateCcw size={16}/>1ページ目を表紙にする</button>}
-      <label><span><FolderInput size={16}/>フォルダーへ移動</span>
-        <select aria-label={note.title+" の移動先"} value={note.folder??""} onChange={event=>{const target=event.currentTarget.value;run(()=>onMove(target));}}>
-          <option value="">未分類</option>
-          {folders.map(folder=><option key={folder} value={folder}>{displayPath(folder)}</option>)}
-        </select>
-      </label>
+      <Selector label="フォルダーへ移動" value={note.folder??""} options={[{value:"",label:"未分類"},...folders.map(f=>({value:f,label:displayPath(f)}))]} onChange={folder=>{if(folder!==null)run(()=>onMove(folder));}}/>
       <button className="danger" onClick={()=>run(onDelete)}><Trash2 size={16}/>削除</button>
     </div>}/>}
   </div>;

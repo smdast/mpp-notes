@@ -1,3 +1,5 @@
+import {HStack} from "@astryxdesign/core/HStack";
+import {FolderMenu} from "./FolderMenu";
 import {Selector} from "@astryxdesign/core/Selector";
 import {Button} from "@astryxdesign/core/Button";
 import {TextInput} from "@astryxdesign/core/TextInput";
@@ -21,6 +23,7 @@ import { folderName, parentFolder, isWithin } from "./folders";
 type Props = {
   dark: boolean;
   onCover: (note:Note,file?:File)=>void;
+  onRenameFolder:(from:string,to:string)=>void; onDeleteFolder:(folder:string)=>void;
   themeControl: ReactNode;
   driveControl: ReactNode;
   notes: Note[];
@@ -41,7 +44,7 @@ type Props = {
   onToggleSidebar: () => void;
 };
 export function Library({
-  dark, onCover,
+  dark, onCover,onRenameFolder,onDeleteFolder,
   themeControl,
   driveControl,
   notes,
@@ -149,7 +152,7 @@ export function Library({
             <h2>フォルダー</h2>
             <div className="folder-cards">
               {children.map((f) => (
-                <button key={f} draggable data-library-kind="folder" data-library-id={f} data-library-label={folderName(f)}
+                <HStack key={f} className="folder-card" gap={2} data-library-target={f}><button className="folder-open" draggable data-library-kind="folder" data-library-id={f} data-library-label={folderName(f)}
                   data-library-target={f} onClick={() => onFolder(f)}>
                   <Folder size={24} />
                   <span>
@@ -168,7 +171,7 @@ export function Library({
                     </small>
                   </span>
                   <ChevronRight size={16} />
-                </button>
+                </button><FolderMenu folder={f} folders={folders} onRename={onRenameFolder} onDelete={onDeleteFolder}/></HStack>
               ))}
             </div>
           </>

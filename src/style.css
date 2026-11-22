@@ -2121,7 +2121,7 @@ main {
 
 .drive-message {
   background: #fff1df;
-  color: #986b35 !important;
+  color: #986b35;
   border-radius: 5px;
   padding: 10px;
 }
@@ -2173,7 +2173,7 @@ main {
 }
 [data-theme="dark"] .drive-message {
   background: #463826;
-  color: #e8d2b0 !important;
+  color: #e8d2b0;
 }
 @media (max-width: 650px) {
   .library-header .drive-toggle {

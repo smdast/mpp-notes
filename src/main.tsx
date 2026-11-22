@@ -1,3 +1,4 @@
+import {Selector} from "@astryxdesign/core/Selector";
 import {InternationalizationProvider} from "@astryxdesign/core/i18n";
 import jaJP from "@astryxdesign/core/locales/ja-JP.json";
 import {AppDialog} from "./AppDialog";
@@ -645,6 +646,7 @@ function App() {
             driveControl={<Button label="設定" icon={<Settings size={16}/>} variant="ghost" onClick={openSettings}/>}
             themeControl={null}
             dark={dark}
+            onRenameFolder={(from,to)=>changeFolder(from,to)} onDeleteFolder={from=>changeFolder(from)}
             onCover={(n,file)=>{if(!file){updateNote({...n,coverImage:undefined});return;}void run("表紙画像を読み込み中",async()=>{const image=await imageStroke(file,{width:794,height:1123});const current=notesRef.current.find(x=>x.id===n.id);if(current)updateNote({...current,coverImage:image.image});});}}
             onToggleSidebar={() => setSidebar(!sidebar)}
             notes={notes}
@@ -698,28 +700,7 @@ function App() {
                     </ActionButton>
                     {menu && (
                       <div className="dropdown">
-                        <label className="folder-move">
-                          フォルダーへ移動
-                          <select
-                            aria-label="ノートのフォルダー"
-                            value={note.folder || ""}
-                            onChange={(e) => {
-                              updateNote({
-                                ...note,
-                                folder: e.target.value || undefined,
-                              });
-                              setFolder(e.target.value);
-                              setMenu(false);
-                            }}
-                          >
-                            <option value="">未分類</option>
-                            {folders.map((f) => (
-                              <option key={f} value={f}>
-                                {displayPath(f)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <Selector label="フォルダーへ移動" value={note.folder||""} options={[{value:"",label:"未分類"},...folders.map(f=>({value:f,label:displayPath(f)}))]} onChange={folder=>{if(folder===null)return;updateNote({...note,folder:folder||undefined});setFolder(folder);setMenu(false);}}/>
                         <ActionButton
                           onClick={() => {
                             setDialog({ kind: "rename", value: note.title });

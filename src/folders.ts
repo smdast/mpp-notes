@@ -43,3 +43,13 @@ export function relocateFolder(
     ),
   };
 }
+
+export function folderEditPath(folders:string[],name:string,parent:string,from?:string){
+ const trimmed=name.trim();
+ if(!trimmed||trimmed==="*"||trimmed.includes("/")||trimmed.length>100)throw new Error("1〜100文字の名前を入力してください（* と / は使用できません）。");
+ const path=parent?parent+"/"+trimmed:trimmed;
+ if(path.split("/").length>20)throw new Error("フォルダーは20階層まで作成できます。");
+ if(folders.includes(path)&&path!==from)throw new Error("同じ名前のフォルダーがあります。");
+ if(from&&parent&&isWithin(parent,from))throw new Error("自分の配下へは移動できません。");
+ return path;
+}
