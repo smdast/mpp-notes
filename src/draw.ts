@@ -1,3 +1,5 @@
+import {smoothPoints,wavyStrokePoints} from "./strokePath";
+export {smoothPoints} from "./strokePath";
 import type { Page, Stroke } from "./model";
 import { isDarkColor, isDarkPaperPixel, LIGHT_PAPER } from "./paper";
 import { inkImage } from "./images";
@@ -48,49 +50,6 @@ export function dotPoints(points: Stroke["points"], spacing: number): Stroke["po
   }
   return dots;
 }
-// Rounded quadratic centerline, rendered as a continuous pressure-sensitive outline.
-export function smoothPoints(points: Stroke["points"]): Stroke["points"] {
-  if (points.length < 3) return points;
-  const out: Stroke["points"] = [];
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i],
-      prev = points[Math.max(0, i - 1)],
-      next = points[Math.min(points.length - 1, i + 1)];
-    const a =
-      i === 0
-        ? p
-        : {
-            x: (prev.x + p.x) / 2,
-            y: (prev.y + p.y) / 2,
-            p: (prev.p + p.p) / 2,
-          };
-    const b =
-      i === points.length - 1
-        ? p
-        : {
-            x: (p.x + next.x) / 2,
-            y: (p.y + next.y) / 2,
-            p: (p.p + next.p) / 2,
-          };
-    const count = Math.max(
-      1,
-      Math.ceil(
-        (Math.hypot(a.x - p.x, a.y - p.y) + Math.hypot(b.x - p.x, b.y - p.y)) /
-          2,
-      ),
-    );
-    for (let j = i === 0 ? 0 : 1; j <= count; j++) {
-      const t = j / count,
-        u = 1 - t;
-      out.push({
-        x: u * u * a.x + 2 * u * t * p.x + t * t * b.x,
-        y: u * u * a.y + 2 * u * t * p.y + t * t * b.y,
-        p: u * u * a.p + 2 * u * t * p.p + t * t * b.p,
-      });
-    }
-  }
-  return out;
-}
 export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, presmoothed = false) {
   if (s.image) {
     const image = inkImage(s.image);
@@ -105,6 +64,10 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, presmoothed
     return;
   }
   if (!s.points.length) return;
+  if(s.wavy){
+    drawStroke(ctx,{...s,wavy:false,dashed:false,dotted:false,shape:undefined,points:wavyStrokePoints(s)},true);
+    return;
+  }
   const points = presmoothed || s.shape ? s.points : smoothPoints(s.points);
   if (s.dashed) {
     for (const piece of dashSegments(points, Math.max(4, s.width * 4), Math.max(3, s.width * 3)))

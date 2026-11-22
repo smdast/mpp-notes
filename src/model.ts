@@ -1,6 +1,8 @@
+import {wavyStrokePoints} from "./strokePath";
 export type Point = { x: number; y: number; p: number };
 export type Stroke = {
   opacity?:number;
+  wavy?: boolean;
   dashed?: boolean;
   dotted?: boolean;
   // Image corners are top-left, top-right, bottom-right, bottom-left.
@@ -74,13 +76,14 @@ export function segmentDistance(p: Point, a: Point, b: Point) {
 }
 export function hits(stroke: Stroke, a: Point, b: Point, radius: number) {
   const r = radius + stroke.width / 2;
-  return stroke.points.some(
+  const points=stroke.wavy?wavyStrokePoints(stroke):stroke.points;
+  return points.some(
     (p, i) =>
       segmentDistance(p, a, b) <= r ||
       (i > 0 &&
-        (segmentDistance(a, stroke.points[i - 1], p) <= r ||
-          segmentDistance(b, stroke.points[i - 1], p) <= r ||
-          intersects(a, b, stroke.points[i - 1], p))),
+        (segmentDistance(a, points[i - 1], p) <= r ||
+          segmentDistance(b, points[i - 1], p) <= r ||
+          intersects(a, b, points[i - 1], p))),
   );
 }
 function intersects(a: Point, b: Point, c: Point, d: Point) {

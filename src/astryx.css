@@ -519,3 +519,14 @@ input[type=range]{accent-color:var(--color-accent)}
 @layer notes {
 .section-heading span{background:var(--color-neutral);color:var(--color-text-secondary)}
 }
+
+@layer notes {
+/* Reserve the vertical scrollbar inside the folder list, never beside it. */
+.folder-nav,.folder-list{min-width:0;max-width:100%}
+.folder-list{overflow-x:hidden;overflow-y:auto;scrollbar-gutter:stable}
+.folder-row{width:100%;max-width:100%}
+.folder-button{flex:1 1 0;width:0}
+.folder-button>span{min-width:0}
+.auto-pen-colors{display:flex;flex-direction:column;grid-template-columns:none}
+.auto-pen-colors .astryx-button{flex-shrink:0;min-width:calc(var(--spacing-1) * 28)}
+}

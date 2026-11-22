@@ -13,6 +13,7 @@ export type PenSettings = {
   autoColor?:AutoPenColor;
   kind?:PenKind;
   shapeCorrection?:boolean;
+  wavy?: boolean;
   dashed?: boolean;
   dotted?: boolean;
   color: string;
@@ -85,8 +86,9 @@ export function readPreferences(value: unknown): Preferences {
         ...(validAutoPenColor(p.autoColor)?{autoColor:p.autoColor}:{}),
         width: Math.round(p.width * 5) / 5,
         shapeCorrection:typeof p.shapeCorrection === "boolean"?p.shapeCorrection:legacyCorrection,
-        dashed: p.dashed === true,
-        dotted: p.dotted === true && p.dashed !== true,
+        wavy: p.wavy === true,
+        dashed: p.dashed === true && p.wavy !== true,
+        dotted: p.dotted === true && p.dashed !== true && p.wavy !== true,
         customColor:typeof p.customColor === "boolean"?p.customColor:p.color!==fallback.color,
       };
     }

@@ -2,6 +2,7 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
+  {version:"1.28.0",date:"2026-11-22",title:"波線のペンと設定表示の改善",changes:["ペンの線種に波線を追加。筆圧・スタイル変更・コピー・バックアップ・PDF出力に対応","波線の見た目に合わせて消しゴムとなげなわの判定を調整","フォルダー一覧の横スクロールを解消","背景別の自動切り替え色を1行ずつ表示し、改行とカスタムの省略を解消"],commits:[]},
   {version:"1.27.1",date:"2026-11-22",title:"ダークテーマとフォルダー操作を改善",changes:["同期状態・用紙パターンの見本などの配色をダークテーマに対応","ツリーとライブラリ内のフォルダーに︙メニューを追加し、名前変更・削除を集約","フォルダーへの移動をAstryxのSelectorに統一し、選択時のメニュー閉じ処理を改善"],commits:[]},
   {version:"1.27.0",date:"2026-11-21",title:"Astryxによるデザイン刷新",changes:["ライブラリ・編集・設定画面の配色と操作部品をAstryxへ刷新","ダイアログとファイル選択を統一。カスタム色は色選択ダイアログで調整して適用","スライダー・線種・消しゴム方式・数値入力を統一し、色名は選択中だけ表示","上部バーを拡大し、ペンアイコンと色見本を分離。塗りつぶし設定は再押下で表示"],commits:[]},
   {version:"1.26.0",date:"2026-11-20",title:"ライブラリでドラッグして整理",changes:["ノート管理の名称をライブラリへ統一","ノートとフォルダーをドラッグして移動。タッチでは長押しで移動","ノートの名前変更・削除・表紙設定を︙メニューに集約"],commits:[]},

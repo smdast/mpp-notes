@@ -1,13 +1,13 @@
 import type {Stroke} from "./model";
 
-export type LineStyle="solid"|"dotted"|"dashed";
+export type LineStyle="solid"|"dotted"|"dashed"|"wavy";
 export type StrokeStylePatch={color?:string;width?:number;line?:LineStyle};
 
-export function lineStyle(stroke:Pick<Stroke,"dashed"|"dotted">):LineStyle{
-  return stroke.dashed?"dashed":stroke.dotted?"dotted":"solid";
+export function lineStyle(stroke:Pick<Stroke,"dashed"|"dotted"|"wavy">):LineStyle{
+  return stroke.wavy?"wavy":stroke.dashed?"dashed":stroke.dotted?"dotted":"solid";
 }
 export function lineFlags(line:LineStyle){
-  return {dotted:line==="dotted",dashed:line==="dashed"};
+  return {wavy:line==="wavy",dotted:line==="dotted",dashed:line==="dashed"};
 }
 export function strokeSize(stroke:Pick<Stroke,"width"|"tool">){
   return Math.max(1,Math.round(stroke.width*(stroke.tool==="marker"?1:5)));

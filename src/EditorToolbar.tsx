@@ -1,3 +1,6 @@
+import {VStack} from "@astryxdesign/core/VStack";
+import {HStack} from "@astryxdesign/core/HStack";
+import {Text} from "@astryxdesign/core/Text";
 import {Popover} from "@astryxdesign/core/Popover";
 import {CustomColor} from "./CustomColor";
 import {SegmentedControl,SegmentedControlItem} from "@astryxdesign/core/SegmentedControl";
@@ -74,9 +77,9 @@ export function EditorToolbar(props: Props) {
         <header><strong>{settingsLabel}</strong><ActionButton aria-label="ツール設定を閉じる" onClick={()=>{setOpen(false);anchor.current?.focus();}}><X size={18}/></ActionButton></header>
       {drawing && <div className="context-controls" aria-label="ペンの設定">
         <SettingSwitch label="自動切り替え" Icon={Contrast} checked={autoColor.enabled} onChange={enabled=>props.onSettings({autoColor:{...autoColor,enabled}})}/>
-        {autoColor.enabled?<div className="auto-pen-colors" role="group" aria-label="背景別のペン色">
-          {(["onLight","onDark"] as const).map(key=><label key={key}>{key==="onLight"?"明るい背景":"暗い背景"}<CustomColor value={autoColor[key]} onChange={color=>props.onSettings({autoColor:{...autoColor,[key]:color}})}/></label>)}
-        </div>:<NamedPalette dark={dark} color={color} onColor={props.onColor}/>}
+        {autoColor.enabled?<VStack className="auto-pen-colors" gap={2} role="group" aria-label="背景別のペン色">
+          {(["onLight","onDark"] as const).map(key=><HStack key={key} role="group" aria-label={key==="onLight"?"明るい背景のペン色":"暗い背景のペン色"} hAlign="between" vAlign="center" gap={3}><Text size="sm" textWrap="nowrap">{key==="onLight"?"明るい背景":"暗い背景"}</Text><CustomColor value={autoColor[key]} onChange={color=>props.onSettings({autoColor:{...autoColor,[key]:color}})}/></HStack>)}
+        </VStack>:<NamedPalette dark={dark} color={color} onColor={props.onColor}/>}
         {tool==="marker"&&<Transparency opacity={settings.opacity??.27} onOpacity={opacity=>props.onSettings({opacity})}/>}
         <Slider containerClassName="notes-slider" label="太さ" aria-label="線の太さ" min={1} max={100} step={1} value={Math.round(settings.width * 5)} onChange={(width:number)=>props.onSettings({width:width/5})} valueDisplay="text" width="100%"/>
         <LineStylePicker value={lineStyle(settings)} onChange={line=>props.onSettings(lineFlags(line))}/>

@@ -1,3 +1,4 @@
+import {wavyStrokePoints} from "./strokePath";
 import { uid, hits, segmentDistance, type Point, type Stroke } from "./model";
 import {StrokeIndex,strokeBounds,pointBounds,overlaps} from "./spatial";
 export type EraserMode = "stroke" | "area";
@@ -37,10 +38,11 @@ export function erase(
         piece = [];
       }
     };
-    if (stroke.points.length === 1) keep(stroke.points[0]);
-    for (let i = 1; i < stroke.points.length; i++) {
-      const from = stroke.points[i - 1],
-        to = stroke.points[i];
+    const source=stroke.wavy?wavyStrokePoints(stroke):stroke.points;
+    if (source.length === 1) keep(source[0]);
+    for (let i = 1; i < source.length; i++) {
+      const from = source[i - 1],
+        to = source[i];
       const count = Math.max(
         1,
         Math.ceil(
@@ -58,7 +60,7 @@ export function erase(
       }
     }
     if (piece.length) pieces.push(piece);
-    for (const points of pieces) {const fragment={ ...stroke, id: uid(), points };result.push(fragment);index?.add(fragment);}
+    for (const points of pieces) {const fragment={ ...stroke, ...(stroke.wavy?{wavy:false,shape:undefined}:{}), id: uid(), points };result.push(fragment);index?.add(fragment);}
   }
   return changed ? result : strokes;
 }
@@ -83,7 +85,7 @@ export function selectLasso(strokes: Stroke[], polygon: Point[], index?:StrokeIn
     (candidates?[...candidates]:strokes)
       .filter(
         (s) =>
-          overlaps(strokeBounds(s),region) && (s.points.some((p) => inside(p, polygon)) ||
+          overlaps(strokeBounds(s),region) && ((s.wavy?wavyStrokePoints(s):s.points).some((p) => inside(p, polygon)) ||
           (!!s.image && polygon.some((p) => inside(p, s.points))) ||
           edges.some(({a,b,bounds}) => overlaps(strokeBounds(s),bounds)&&hits(s,a,b,0))),
       )

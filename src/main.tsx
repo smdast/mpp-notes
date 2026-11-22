@@ -132,7 +132,7 @@ function App() {
 
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
-  const { width, pressure, dotted, dashed } = preferences.pens[preferences.activePen];
+  const { width, pressure, dotted, dashed, wavy } = preferences.pens[preferences.activePen];
   const [jump, setJump] = useState({ id: "", token: 0 });
 
   const [notes, setNotes] = useState<Note[]>([]),
@@ -782,6 +782,7 @@ function App() {
                     fill={preferences.fill??defaultFill}
                     width={width}
                     pressure={pressure}
+                    wavy={!!wavy}
                     dotted={!!dotted}
                     dashed={!!dashed}
                     scratchErase={preferences.scratchErase}

@@ -1,0 +1,56 @@
+import {it,expect} from "vitest";
+import {createCanvas} from "@napi-rs/canvas";
+import {wavePoints,wavyStrokePoints} from "./strokePath";
+import {drawStroke} from "./draw";
+import {hits,newNote,newPage,type Stroke} from "./model";
+import {erase,selectLasso} from "./editing";
+import {strokeBounds,StrokeIndex} from "./spatial";
+import {defaultPreferences,readPreferences} from "./preferences";
+import {lineFlags,lineStyle,applyStrokeStyle} from "./strokeStyle";
+import {makeBackup,readBackupBundle,validStroke} from "./backup";
+import {cloneStrokes,encodeStrokes,decodeStrokes} from "./clipboard";
+const p=(x:number,y=30,pressure=.75/.95)=>({x,y,p:pressure});
+const stroke:Stroke={id:"wave",tool:"pen",color:"#000000",width:4,pressure:false,wavy:true,shape:"line",points:[p(10),p(106)]};
+it("samples waves at the same distance regardless of event density, preserving pressure",()=>{
+ const sparse=wavePoints([p(0,0,0),p(96,0,1)],4);
+ const dense=wavePoints([p(0,0,0),p(7,0,7/96),p(45,0,45/96),p(96,0,1)],4);
+ expect(sparse.length).toBe(dense.length);
+ sparse.forEach((point,i)=>{expect(point.x).toBeCloseTo(dense[i].x);expect(point.y).toBeCloseTo(dense[i].y);expect(point.p).toBeCloseTo(dense[i].p);});
+ expect(sparse.find(p=>p.x===8)?.y).toBeCloseTo(5);
+ expect(sparse.find(p=>p.x===24)?.y).toBeCloseTo(-5);
+ expect(sparse[0]).toEqual(p(0,0,0));expect(sparse.at(-1)?.p).toBe(1);
+ expect(wavePoints([],4)).toEqual([]);expect(wavePoints([p(1)],4)).toEqual([p(1)]);
+ expect(wavePoints([p(1),p(1)],4).every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))).toBe(true);
+});
+it("draws wave crests, and indexes/erases/selects the visible ink",()=>{
+ const canvas=createCanvas(130,60),ctx=canvas.getContext("2d");
+ drawStroke(ctx as unknown as CanvasRenderingContext2D,stroke);
+ expect(ctx.getImageData(18,35,1,1).data[3]).toBeGreaterThan(180);
+ expect(ctx.getImageData(18,30,1,1).data[3]).toBe(0);
+ const crest=p(18,35),index=new StrokeIndex([stroke]);
+ expect(hits(stroke,crest,crest,0)).toBe(true);expect(hits(stroke,p(18,30),p(18,30),0)).toBe(false);
+ const bounds=strokeBounds(stroke);expect(bounds.top).toBeLessThan(25);expect(bounds.bottom).toBeGreaterThan(35);
+ expect(erase([stroke],crest,crest,.5,"stroke",index)).toEqual([]);
+ expect(selectLasso([stroke],[p(17,34),p(19,34),p(19,36),p(17,36)])).toEqual(new Set([stroke.id]));
+});
+it("splits area-erased waves without restarting their phase",()=>{
+ const fragments=erase([stroke],p(58,30),p(58,30),3,"area");
+ expect(fragments.length).toBe(2);expect(fragments.every(s=>!s.wavy)).toBe(true);
+ const tail=fragments[1];
+ expect(hits(tail,p(82,35),p(82,35),0)).toBe(true);
+ expect(wavyStrokePoints(stroke).at(-1)?.x).toBeCloseTo(106);
+});
+it("round trips the per-pen style and editable notes through backups and clipboard",()=>{
+ const settings=defaultPreferences();settings.pens.pen2={...settings.pens.pen2,...lineFlags("wavy")};
+ expect(lineStyle(readPreferences(settings).pens.pen2)).toBe("wavy");
+ expect(lineStyle(readPreferences(settings).pens.pen1)).toBe("solid");
+ expect(readPreferences({pens:{pen1:{...settings.pens.pen1,wavy:"bad"}}}).pens.pen1.wavy).toBe(false);
+ const note=newNote();note.pages[0].strokes=[stroke];
+ const restored=readBackupBundle(makeBackup([note])).notes[0].pages[0].strokes[0];
+ expect({...restored,id:stroke.id}).toEqual(stroke);
+ expect(cloneStrokes(decodeStrokes(encodeStrokes([stroke]))!,newPage())[0].wavy).toBe(true);
+ expect(validStroke({...stroke,wavy:"bad"} as unknown as Stroke)).toBe(false);
+ const solid=applyStrokeStyle([stroke],new Set([stroke.id]),{line:"solid"})[0];
+ expect(lineStyle(solid)).toBe("solid");expect(solid.points).toEqual(stroke.points);
+ expect(lineStyle(applyStrokeStyle([solid],new Set([stroke.id]),{line:"wavy"})[0])).toBe("wavy");
+});

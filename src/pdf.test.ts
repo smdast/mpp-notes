@@ -82,6 +82,8 @@ it("exports strokes at the same visible location for all rotations and crop boxe
         id: "dashed", tool: "pen", color: "#000000", width: 3, pressure: false, dashed: true,
         points: [{x:80,y:170,p:.75/.95},{x:140,y:170,p:.75/.95}],
       },
+      {id:"wavy",tool:"pen",color:"#000000",width:4,pressure:false,wavy:true,shape:"line",
+        points:[{x:80,y:190,p:.75/.95},{x:144,y:190,p:.75/.95}]},
     ];
   vi.stubGlobal("document", { createElement: () => createCanvas(1, 1) });
   vi.stubGlobal("Image", Image);
@@ -114,6 +116,8 @@ it("exports strokes at the same visible location for all rotations and crop boxe
       expect(canvas.getContext("2d").getImageData(85,150,1,1).data[0]).toBeGreaterThan(220);
       expect(canvas.getContext("2d").getImageData(85,170,1,1).data[0]).toBeLessThan(50);
       expect(canvas.getContext("2d").getImageData(97,170,1,1).data[0]).toBeGreaterThan(220);
+      expect(canvas.getContext("2d").getImageData(88,195,1,1).data[0]).toBeLessThan(50);
+      expect(canvas.getContext("2d").getImageData(88,190,1,1).data[0]).toBeGreaterThan(220);
       const blank = canvas.getContext("2d").getImageData(140, 130, 1, 1).data;
       expect(blank[1]).toBeGreaterThan(240);
     }

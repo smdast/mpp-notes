@@ -48,6 +48,7 @@ type Props = {
   fill?:FillSettings;
   width: number;
   pressure: boolean;
+  wavy: boolean;
   dotted: boolean;
   dashed: boolean;
   shapeCorrection: boolean;
@@ -132,6 +133,7 @@ function PageSlot({
           fill={props.fill}
           width={props.width}
           pressure={props.pressure}
+          wavy={props.wavy}
           dotted={props.dotted}
           dashed={props.dashed}
           shapeCorrection={props.shapeCorrection}

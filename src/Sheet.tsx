@@ -48,6 +48,7 @@ type Props = {
   isActive: boolean;
   pdfDocument?: PDFDocumentProxy;
   pressure: boolean;
+  wavy: boolean;
   dotted: boolean;
   dashed: boolean;
   shapeCorrection: boolean;
@@ -79,6 +80,7 @@ export function Sheet({
   isActive,
   pdfDocument,
   pressure,
+  wavy,
   dotted,
   dashed,
   shapeCorrection,
@@ -646,6 +648,7 @@ export function Sheet({
         opacity:action==="marker"?markerOpacity:undefined,
         color:autoColor?.enabled?strokeStartColor(autoColor,paper.current,p,page,paperColor,imageLayers):color,
         pressure,
+        wavy,
         dotted,
         dashed,
         width: action === "marker" ? width * 5 : width,

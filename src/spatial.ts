@@ -1,3 +1,4 @@
+import {wavyStrokePoints} from "./strokePath";
 import type {Point, Stroke} from "./model";
 export type Bounds={left:number;top:number;right:number;bottom:number};
 const boundsCache=new WeakMap<Stroke,Bounds>();
@@ -5,7 +6,7 @@ export function strokeBounds(stroke:Stroke):Bounds {
  const cached=boundsCache.get(stroke);if(cached)return cached;
  const b={left:Infinity,top:Infinity,right:-Infinity,bottom:-Infinity};
  const padding=stroke.image?0:stroke.width*.65;
- for(const p of stroke.points){b.left=Math.min(b.left,p.x-padding);b.right=Math.max(b.right,p.x+padding);b.top=Math.min(b.top,p.y-padding);b.bottom=Math.max(b.bottom,p.y+padding);}
+ for(const p of stroke.wavy?wavyStrokePoints(stroke):stroke.points){b.left=Math.min(b.left,p.x-padding);b.right=Math.max(b.right,p.x+padding);b.top=Math.min(b.top,p.y-padding);b.bottom=Math.max(b.bottom,p.y+padding);}
  boundsCache.set(stroke,b);return b;
 }
 export function pointBounds(points:Point[],padding=0):Bounds {
