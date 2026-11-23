@@ -1,3 +1,4 @@
+import {defaultToolbarPlacement,readToolbarPlacement,type ToolbarPlacement} from "./toolbarPlacement";
 import type {FillSettings} from "./fill";
 import {defaultShortcuts,readShortcuts,type ShortcutMap} from "./shortcuts";
 import {SHAPE_HOLD_MS,MAX_SHAPE_HOLD_MS} from "./shapeHold";
@@ -22,6 +23,7 @@ export type PenSettings = {
   customColor?: boolean;
 };
 export type Preferences = {
+  toolbarPlacement:ToolbarPlacement;
   selectionButton:SelectionButtonAction;
   eraserButton:SelectionButtonAction;
   shortcuts:ShortcutMap;
@@ -41,6 +43,7 @@ export type Preferences = {
   activePen: PenId;
 };
 export const defaultPreferences = (): Preferences => ({
+  toolbarPlacement:defaultToolbarPlacement(),
   selectionButton:"lasso",eraserButton:"eraser",shortcuts:defaultShortcuts(),
   shapeHoldMs:SHAPE_HOLD_MS, scrollDirection:"vertical",
   eraserMode: "stroke", scratchErase: false, pagesCollapsed:false,
@@ -57,6 +60,7 @@ export function readPreferences(value: unknown): Preferences {
   const base = defaultPreferences();
   if (!value || typeof value !== "object") return base;
   const v = value as Partial<Preferences> & {shapeCorrection?:boolean};
+  base.toolbarPlacement=readToolbarPlacement(v.toolbarPlacement);
   if(v.selectionButton==="eraser"||v.selectionButton==="lasso")base.selectionButton=v.selectionButton;
   if(v.eraserButton==="eraser"||v.eraserButton==="lasso")base.eraserButton=v.eraserButton;
   base.shortcuts=readShortcuts(v.shortcuts);

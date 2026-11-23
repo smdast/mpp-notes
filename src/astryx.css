@@ -558,3 +558,16 @@ input[type=range]{accent-color:var(--color-accent)}
 .note-header-toolbar>.astryx-section{min-height:calc(var(--spacing-1) * 16);display:flex;align-items:center;padding-block:var(--spacing-3);padding-inline:var(--spacing-5)}
 @media(max-width:700px){.note-header-toolbar>.astryx-section{padding-inline:var(--spacing-2)}}
 }
+
+@layer notes {
+.view-editor .editor-toolbar{grid-template-columns:max-content minmax(0,1fr) auto}
+.toolbar-placement{flex-shrink:0}
+.toolbar-placement .tool{width:var(--spacing-10);min-width:var(--spacing-10)}
+.toolbar-drag-handle{touch-action:none;cursor:grab}
+.view-editor .editor-toolbar.is-floating{position:fixed;z-index:80;left:var(--spacing-4);top:calc(var(--spacing-1) * 24);width:min(calc(100dvw - var(--spacing-8)),calc(var(--spacing-1) * 250));max-width:calc(100vw - var(--spacing-8));border:1px solid var(--color-border-emphasized);border-radius:var(--radius-container);box-shadow:var(--shadow-high);padding:var(--spacing-3);gap:var(--spacing-2)}
+.editor-toolbar[data-dragging="true"]{user-select:none}
+.editor-toolbar[data-dragging="true"] .toolbar-drag-handle{cursor:grabbing}
+@media(max-width:650px){.view-editor .editor-toolbar{grid-template-columns:max-content minmax(0,1fr) auto}}
+}
+
+@layer notes {.view-editor .editor-toolbar.is-floating[data-suspended]{visibility:hidden}}

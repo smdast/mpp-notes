@@ -1,3 +1,5 @@
+import {useToolbarPlacement} from "./useToolbarPlacement";
+import type {ToolbarPlacement} from "./toolbarPlacement";
 import {PenPresetIcon} from "./PenPresetIcon";
 import {VStack} from "@astryxdesign/core/VStack";
 import {HStack} from "@astryxdesign/core/HStack";
@@ -12,7 +14,7 @@ import {useState,useRef,useEffect} from "react";
 import {LineStylePicker} from "./LineStylePicker";
 import {lineFlags,lineStyle} from "./strokeStyle";
 import {useDismiss} from "./useDismiss";
-import { ClipboardPaste, Undo2, Redo2, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2, Contrast, PaintBucket } from "lucide-react";
+import { ClipboardPaste, Undo2, Redo2, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2, Contrast, PaintBucket, GripVertical, PanelTopClose, PanelTopOpen } from "lucide-react";
 import type {LucideIcon} from "lucide-react";
 import type { Tool } from "./Sheet";
 import type {FillSettings} from "./fill";
@@ -30,6 +32,8 @@ type Props = {
   onEraserMode: (mode: EraserMode) => void; onEraserSize: (size: number) => void;
   onScratchErase:(enabled:boolean)=>void;
   onDeletePen:()=>void;
+  onPlacement:(placement:ToolbarPlacement)=>void;
+  suspended:boolean;
 };
 export function EditorToolbar(props: Props) {
   const {tool, preferences, color, dark} = props;
@@ -40,6 +44,8 @@ export function EditorToolbar(props: Props) {
   const panel=useRef<HTMLDivElement>(null),anchor=useRef<HTMLButtonElement|null>(null);
   useDismiss(open,[panel,anchor],()=>setOpen(false),true);
   const root=useRef<HTMLDivElement>(null),pendingNew=useRef<PenId|null>(null);
+  const placement=useToolbarPlacement(root,preferences.toolbarPlacement,props.onPlacement,()=>setOpen(false));
+  const floating=preferences.toolbarPlacement.mode==="floating";
   useEffect(()=>{
     if(pendingNew.current===preferences.activePen){
       const button=root.current?.querySelector<HTMLButtonElement>(`[data-pen-id="${preferences.activePen}"]`);
@@ -47,8 +53,9 @@ export function EditorToolbar(props: Props) {
       pendingNew.current=null;
     }else setOpen(false);
   },[tool,preferences.activePen]);
+  useEffect(()=>{if(props.suspended)setOpen(false);},[props.suspended]);
   const settingsLabel=tool==="fill"?"塗りつぶしの設定":tool==="marker"?"蛍光ペンの設定":tool==="pen"?"ペンの設定":"消しゴムの設定";
-  return <div ref={root} className="toolbar editor-toolbar">
+  return <div ref={root} className={"toolbar editor-toolbar"+(floating?" is-floating":"")} data-toolbar-mode={floating?"floating":"docked"} data-suspended={props.suspended||undefined}>
     <div className="history-tools" role="group" aria-label="編集操作">
       <ActionButton className="tool" title={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} aria-label={shortcutTitle("元に戻す",preferences.shortcuts,"undo")} disabled={!props.canUndo} onClick={() => props.onUndo()}><Undo2 size={18}/></ActionButton>
       <ActionButton className="tool" title={shortcutTitle("やり直し",preferences.shortcuts,"redo")} aria-label={shortcutTitle("やり直し",preferences.shortcuts,"redo")} disabled={!props.canRedo} onClick={() => props.onUndo(true)}><Redo2 size={18}/></ActionButton>
@@ -102,6 +109,10 @@ export function EditorToolbar(props: Props) {
       </div>}
       </div>}/>}
     </div>
+    <HStack className="toolbar-placement" gap={0} vAlign="center">
+      {floating&&<ActionButton className="tool toolbar-drag-handle" aria-label="ツールバーを移動" title="ドラッグで移動・矢印キーで調整" aria-description="矢印キーで移動、Shiftと矢印キーで大きく移動。ドラッグ中はEscapeで取り消します。" {...placement.handle}><GripVertical size={18}/></ActionButton>}
+      <ActionButton className="tool toolbar-layout-toggle" aria-label={floating?"ツールバーを上部に固定":"ツールバーをフローティングにする"} title={floating?"上部に固定":"フローティングにする"} onClick={placement.toggle}>{floating?<PanelTopClose size={18}/>:<PanelTopOpen size={18}/>}</ActionButton>
+    </HStack>
   </div>;
 }
 

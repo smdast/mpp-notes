@@ -735,7 +735,7 @@ function App() {
                 <ShareMenu disabled={!note||!!busy} onPdf={exportPdfNote} onExport={exportNotebook}/>
                 <ActionButton className="icon-button" title="設定" aria-label="設定" onClick={openSettings}><Settings size={17}/></ActionButton>
               </HStack>}/>
-            <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color}
+            <EditorToolbar suspended={settingsOpen||!!busy} onPlacement={toolbarPlacement=>storePreferences({...preferencesRef.current,toolbarPlacement})} tool={tool} preferences={preferences} dark={dark} color={color}
               fill={preferences.fill??defaultFill} onFill={fill=>storePreferences({...preferencesRef.current,fill})}
               eraserMode={eraserMode} eraserSize={eraserSize}
               canUndo={!!history?.past.length} canRedo={!!history?.future.length}

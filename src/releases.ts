@@ -2,6 +2,7 @@ import packageInfo from "../package.json";
 export const CURRENT_VERSION=packageInfo.version;
 export type Release={version:string;date:string;title:string;changes:string[];commits:string[];legacyVersion?:string};
 export const releases:Release[]=[
+  {version:"1.30.0",date:"2026-11-23",title:"描画ツールバーを自由に配置",changes:["描画ツールバーを上部固定とフローティングから切り替え","フローティング中はつまみをドラッグして移動。矢印キーでの位置調整にも対応","配置と固定方式を端末内に保存。画面サイズの変更時は操作部が隠れない位置に調整","設定画面や処理中の表示に浮動ツールバーが重ならないように対応"],commits:[]},
   {version:"1.29.1",date:"2026-11-23",title:"バーの隙間と通知の表示時間を調整",changes:["上部バーの余白を内側へ移し、ツールバーとの隙間を解消","Bannerを5秒後に自動非表示。ポインターやキーボードで通知を操作している間はタイマーを停止"],commits:[]},
   {version:"1.29.0",date:"2026-11-23",title:"周辺の明るさによるペン色とAstryx表示",changes:["ペン色の自動切り替えを、始点の周辺で明るい・暗い領域の多い方から判定。挿入画像・透明部分・PDFにも対応","ペンと蛍光ペンを下向きの色付きアイコンに変更。自動切り替えは2色の柄と切り替えマークで表示","ノート上部の操作バーをAstryx Toolbarに変更。元に戻す・やり直し・貼り付けをバーの上下中央に配置","塗りつぶし・フォルダー移動・設定・同期などのエラーや案内をフローティング表示のAstryx Bannerに統一"],commits:[]},
   {version:"1.28.1",date:"2026-11-22",title:"ページ数が多いノートの描画を軽量化",changes:["端末保存をページごとに分離し、編集したページだけを更新。旧形式も読み込み・移行可能","変更のない用紙とプレビューの再描画を抑え、ページ一覧の位置測定を並び替え中に限定","プレビュー更新を筆記終了後へ延期し、入力が再開したら中断","ページの表示判定を共有し、速いスクロールでも最新の状態を反映"],commits:[]},
