@@ -537,9 +537,9 @@ input[type=range]{accent-color:var(--color-accent)}
 .pen-preset-icon{flex-shrink:0;overflow:visible}
 .pen-preset small{inset-inline-end:var(--spacing-1);inset-block-end:var(--spacing-1);font-size:var(--font-size-3xs)}
 .topbar.note-header-toolbar{display:block;height:auto;min-height:calc(var(--spacing-1) * 16);padding-block:var(--spacing-3)}
-.note-header-toolbar>[role="toolbar"]{width:100%;min-width:0;flex-wrap:nowrap}
-.note-header-toolbar>[role="toolbar"]>:first-child{min-width:0;flex:1 1 0;flex-wrap:nowrap}
-.note-header-toolbar>[role="toolbar"]>:last-child{flex:0 0 auto;flex-wrap:nowrap}
+.note-header-toolbar .astryx-toolbar{width:100%;min-width:0;flex-wrap:nowrap}
+.note-header-toolbar .astryx-toolbar>:first-child{min-width:0;flex:1 1 0;flex-wrap:nowrap}
+.note-header-toolbar .astryx-toolbar>:last-child{flex:0 0 auto;flex-wrap:nowrap}
 .note-header-toolbar .breadcrumb{width:100%;min-width:0}
 }
 
@@ -550,4 +550,11 @@ input[type=range]{accent-color:var(--color-accent)}
 
 @layer notes {
 .astryx-toast:has([data-notes-floating-banner]){padding:0;background:transparent;border:0;box-shadow:none}
+}
+
+@layer notes {
+/* Keep the divider on the shared edge, outside all toolbar content padding. */
+.view-editor .topbar.note-header-toolbar{padding:0;border:0;min-height:0;height:auto}
+.note-header-toolbar>.astryx-section{min-height:calc(var(--spacing-1) * 16);display:flex;align-items:center;padding-block:var(--spacing-3);padding-inline:var(--spacing-5)}
+@media(max-width:700px){.note-header-toolbar>.astryx-section{padding-inline:var(--spacing-2)}}
 }
