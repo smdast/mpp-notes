@@ -1,3 +1,6 @@
+import {ToastViewport} from "@astryxdesign/core/Toast";
+import {Toolbar} from "@astryxdesign/core/Toolbar";
+import {ErrorBanner} from "./ErrorBanner";
 import {Selector} from "@astryxdesign/core/Selector";
 import {InternationalizationProvider} from "@astryxdesign/core/i18n";
 import jaJP from "@astryxdesign/core/locales/ja-JP.json";
@@ -44,7 +47,6 @@ import {
   ArrowUp,
   ArrowDown,
   Trash2,
-  X,
   Maximize2,
   Minus,
   HelpCircle,
@@ -600,7 +602,7 @@ function App() {
     },
   });
   return (
-    <InternationalizationProvider locale="ja-JP" messages={{"ja-JP":jaJP}}><Theme theme={noteThemes[preferences.accent]} mode={dark?"dark":"light"}><div ref={libraryDrag} className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
+    <InternationalizationProvider locale="ja-JP" messages={{"ja-JP":jaJP}}><Theme theme={noteThemes[preferences.accent]} mode={dark?"dark":"light"}><ToastViewport position="bottomEnd" maxVisible={3} inset={{bottom:84}}><div ref={libraryDrag} className={"app view-" + view + (!sidebar ? " collapsed" : "")}>
       {view === "library" && !settingsOpen && (
         <aside className="sidebar">
           <a className="brand" href="./">
@@ -670,12 +672,12 @@ function App() {
             onImportNote={()=>setImportKind("note")}
             error={error}
             onDismiss={() => setError("")}
-            onRetry={retrySave}
+            onRetry={failed.current?retrySave:undefined}
           />
         ) : (
           <>
-            <header className="topbar">
-              <div className="breadcrumb">
+            <Toolbar className="topbar note-header-toolbar" label="ノートの操作バー" size="md" gap={3} dividers={["bottom"]} startContent={
+              <HStack className="breadcrumb" vAlign="center" gap={2}>
                 <ActionButton
                   className="library-back"
                   aria-label="ライブラリへ戻る"
@@ -723,8 +725,8 @@ function App() {
                     )}
                   </div>
                 )}
-              </div>
-              <div className="top-actions">
+              </HStack>} endContent={
+              <HStack className="top-actions" vAlign="center" gap={2}>
                 <span className={`save-status${displaySync?" sync-status":""}${saveStatus==="保存失敗"?" failed":""}`}
                   role="status" title={editorStatus}>
                   <StatusIcon size={14} className={StatusIcon===LoaderCircle?"spin":undefined} aria-hidden="true"/>
@@ -732,8 +734,7 @@ function App() {
                 </span>
                 <ShareMenu disabled={!note||!!busy} onPdf={exportPdfNote} onExport={exportNotebook}/>
                 <ActionButton className="icon-button" title="設定" aria-label="設定" onClick={openSettings}><Settings size={17}/></ActionButton>
-              </div>
-            </header>
+              </HStack>}/>
             <EditorToolbar tool={tool} preferences={preferences} dark={dark} color={color}
               fill={preferences.fill??defaultFill} onFill={fill=>storePreferences({...preferencesRef.current,fill})}
               eraserMode={eraserMode} eraserSize={eraserSize}
@@ -741,15 +742,7 @@ function App() {
               onUndo={undo} onTool={setTool} onPen={choosePen} onAddPen={registerPen} onDeletePen={removePen} onSettings={setPen} onColor={setColor}
               onEraserMode={(eraserMode) => storePreferences({...preferencesRef.current, eraserMode})} onEraserSize={setEraserSize}
               onScratchErase={scratchErase=>storePreferences({...preferencesRef.current,scratchErase})}/>
-            {error && (
-              <div className="error-banner" role="alert">
-                <span>{error}</span>
-                {failed.current && <ActionButton onClick={retrySave}>再保存</ActionButton>}
-                <ActionButton title="メッセージを閉じる" onClick={() => setError("")}>
-                  <X size={16} />
-                </ActionButton>
-              </div>
-            )}
+            {error&&<ErrorBanner message={error} onDismiss={()=>setError("")} onRetry={failed.current?retrySave:undefined}/>}
             {ready && page && note ? (
               <div className="workspace">
                 <PageSidebar shortcuts={preferences.shortcuts} key={note.id} pdf={note.pdf} collapsed={preferences.pagesCollapsed} onCollapse={pagesCollapsed=>storePreferences({...preferencesRef.current,pagesCollapsed})} pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
@@ -876,7 +869,7 @@ function App() {
         <HStack gap={2} hAlign="end">{dialog.kind==="help"?<Button label="閉じる" onClick={()=>setDialog(null)}/>:<><Button label="キャンセル" onClick={()=>setDialog(null)}/><Button type="submit" label={dialog.kind.startsWith("delete")?"削除する":dialog.kind==="new"?"ノートを作成":"変更する"} variant={dialog.kind.startsWith("delete")?"destructive":"primary"} isDisabled={["new","rename"].includes(dialog.kind)&&!dialog.value?.trim()}/></>}</HStack>
         </VStack>
       </AppDialog>}
-    </div></Theme></InternationalizationProvider>
+    </div></ToastViewport></Theme></InternationalizationProvider>
   );
 }
 document.addEventListener("contextmenu",event=>event.preventDefault());

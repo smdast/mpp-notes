@@ -1,3 +1,4 @@
+import {FloatingBanner} from "../FloatingBanner";
 import { Cloud, X, RefreshCw } from "lucide-react";
 import type { useDriveSync } from "./useDriveSync";
 export function DrivePanel({
@@ -25,9 +26,7 @@ export function DrivePanel({
           {drive.conflicts > 0 && <span>解決した競合：{drive.conflicts} 件</span>}
         </div>
         {drive.message && (
-          <p className="drive-message" role="alert">
-            {drive.message}
-          </p>
+          <FloatingBanner key={drive.message} status="warning" role="alert" title={drive.message}/>
         )}
         <div className="drive-actions">
           {!drive.connected ? (

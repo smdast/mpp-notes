@@ -1,3 +1,4 @@
+import {FloatingBanner} from "../FloatingBanner";
 import {FolderOpen, RefreshCw, FolderSync} from "lucide-react";
 import type {useFolderSync} from "./useFolderSync";
 import {SYNC_DIRECTORY} from "./repository";
@@ -7,9 +8,9 @@ export function FolderSyncPanel({sync}: {sync: ReturnType<typeof useFolderSync>}
     <h2>同期フォルダーに保存</h2>
     <p>Google Drive・OneDrive・DropboxなどのPC同期フォルダーに、ノート・画像・元PDFを自動保存します。ほかの端末でも同じフォルダーを選ぶと変更を同期できます。Googleへのログインは不要です。</p>
     <p>例：<code>G:\マイドライブ\MPP Notes</code>。フォルダー選択画面のアドレス欄にパスを入力できます。選んだ場所の「{SYNC_DIRECTORY}」に同期データを作成します。</p>
-    {!sync.supported && <p className="drive-message" role="alert">このブラウザーはフォルダー選択に対応していません。Windows版EdgeまたはChromeなどの対応ブラウザーで開いてください。Google Drive自動同期は別の方法として利用できます。</p>}
+    {!sync.supported && <FloatingBanner status="warning" role="alert" title="このブラウザーはフォルダー選択に対応していません。Windows版EdgeまたはChromeなどの対応ブラウザーで開いてください。Google Drive自動同期は別の方法として利用できます。"/>}
     <div className="drive-status" role="status"><b>{sync.status}</b>{sync.folderName && <span>保存先：{sync.folderName === SYNC_DIRECTORY ? sync.folderName : sync.folderName + " / " + SYNC_DIRECTORY}</span>}{sync.conflicts > 0 && <span>解決した競合：{sync.conflicts} 件</span>}</div>
-    {sync.message && <p className="drive-message" role="alert">{sync.message}</p>}
+    {sync.message && <FloatingBanner key={sync.message} status="warning" role="alert" title={sync.message}/>}
     <div className="drive-actions">
       <button className={sync.folderName ? "" : "primary"} disabled={!sync.supported || !sync.initialized || sync.working} onClick={sync.choose}><FolderOpen size={16}/>{sync.folderName ? "保存先を変更" : "保存先フォルダーを選択"}</button>
       {sync.folderName && <>{sync.permissionNeeded ? <button className="primary" disabled={!sync.supported || sync.working} onClick={sync.resume}>アクセスを許可して再開</button> : <button className="primary" disabled={!sync.supported || sync.working} onClick={sync.sync}><RefreshCw size={16}/>今すぐ同期</button>}<button disabled={sync.working} onClick={() => void sync.disconnect()}>設定を解除</button></>}

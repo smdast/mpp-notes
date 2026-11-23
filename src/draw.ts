@@ -148,7 +148,8 @@ export function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, presmoothed
   ctx.restore();
 }
 let backgroundSample: CanvasRenderingContext2D | null = null;
-
+export const AUTO_COLOR_RADIUS=12;
+const BACKGROUND_SAMPLE_SIZE=25;
 export function strokeStartColor(
   colors: AutoPenColor,
   paper: HTMLCanvasElement | null,
@@ -157,40 +158,44 @@ export function strokeStartColor(
   paperColor: string,
   images: Stroke[] = [],
 ) {
-  const paperContext=paper?.getContext("2d");
-  if(!paper?.width||!paper.height||!paperContext)
+  if(!paper?.width||!paper.height||!paper.getContext("2d"))
     return isDarkColor(paperColor)?colors.onDark:colors.onLight;
-
-  const scaleX=paper.width/page.width,scaleY=paper.height/page.height;
-  const x=Math.max(0,Math.min(paper.width-1,Math.floor(point.x*scaleX)));
-  const y=Math.max(0,Math.min(paper.height-1,Math.floor(point.y*scaleY)));
-  const layers=images.filter(image=>{
-    const bounds=strokeBounds(image);
-    return bounds.left<(x+1)/scaleX&&bounds.right>x/scaleX&&
-      bounds.top<(y+1)/scaleY&&bounds.bottom>y/scaleY;
-  });
-  let pixel:Uint8ClampedArray;
-  if(layers.length){
-    // Composite only the starting pixel. The ink canvas also contains pen
-    // strokes, which must not affect the background colour.
-    if(!backgroundSample){
-      const canvas=paper.ownerDocument.createElement("canvas");
-      canvas.width=canvas.height=1;
-      backgroundSample=canvas.getContext("2d",{willReadFrequently:true});
-    }
-    if(backgroundSample){
-      const sample=backgroundSample;
-      sample.resetTransform();
-      sample.clearRect(0,0,1,1);
-      sample.drawImage(paper,x,y,1,1,0,0,1,1);
-      sample.setTransform(scaleX,0,0,scaleY,-x,-y);
-      layers.forEach(image=>drawStroke(sample,image));
-      pixel=sample.getImageData(0,0,1,1).data;
-      return isDarkPaperPixel(pixel,paperColor)?colors.onDark:colors.onLight;
-    }
+  const x=Math.max(0,Math.min(page.width,point.x)),y=Math.max(0,Math.min(page.height,point.y));
+  const left=Math.max(0,x-AUTO_COLOR_RADIUS),top=Math.max(0,y-AUTO_COLOR_RADIUS);
+  const right=Math.min(page.width,x+AUTO_COLOR_RADIUS),bottom=Math.min(page.height,y+AUTO_COLOR_RADIUS);
+  if(right<=left||bottom<=top)return isDarkColor(paperColor)?colors.onDark:colors.onLight;
+  if(!backgroundSample){
+    const canvas=paper.ownerDocument.createElement("canvas");
+    canvas.width=canvas.height=BACKGROUND_SAMPLE_SIZE;
+    backgroundSample=canvas.getContext("2d",{willReadFrequently:true});
   }
-  pixel=paperContext.getImageData(x,y,1,1).data;
-  return isDarkPaperPixel(pixel,paperColor)?colors.onDark:colors.onLight;
+  if(!backgroundSample)return isDarkColor(paperColor)?colors.onDark:colors.onLight;
+  const sample=backgroundSample,size=BACKGROUND_SAMPLE_SIZE;
+  const scaleX=size/(right-left),scaleY=size/(bottom-top);
+  sample.resetTransform();sample.clearRect(0,0,size,size);
+  // Nearest-neighbour samples count the light/dark areas rather than averaging
+  // their RGB values. The fixed-size readback keeps pen-down work bounded.
+  sample.imageSmoothingEnabled=false;
+  sample.drawImage(paper,left*paper.width/page.width,top*paper.height/page.height,
+    (right-left)*paper.width/page.width,(bottom-top)*paper.height/page.height,0,0,size,size);
+  sample.setTransform(scaleX,0,0,scaleY,-left*scaleX,-top*scaleY);
+  for(const image of images){
+    const bounds=strokeBounds(image);
+    if(bounds.left<right&&bounds.right>left&&bounds.top<bottom&&bounds.bottom>top)drawStroke(sample,image);
+  }
+  // Use only paper/PDF and inserted images: existing ink must not decide the
+  // next stroke's colour. Transparent pixels reveal their composited background.
+  const pixels=sample.getImageData(0,0,size,size).data;
+  let dark=0,light=0;
+  for(let row=0;row<size;row++)for(let col=0;col<size;col++){
+    const px=left+(col+.5)/scaleX,py=top+(row+.5)/scaleY;
+    if(Math.hypot(px-x,py-y)>AUTO_COLOR_RADIUS)continue;
+    if(isDarkPaperPixel(pixels.subarray((row*size+col)*4,(row*size+col)*4+4),paperColor))dark++;else light++;
+  }
+  const col=Math.min(size-1,Math.max(0,Math.floor((x-left)*scaleX)));
+  const row=Math.min(size-1,Math.max(0,Math.floor((y-top)*scaleY))),offset=(row*size+col)*4;
+  const useDark=dark===light?isDarkPaperPixel(pixels.subarray(offset,offset+4),paperColor):dark>light;
+  return useDark?colors.onDark:colors.onLight;
 }
 
 export function drawPaper(

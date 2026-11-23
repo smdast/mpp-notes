@@ -1,3 +1,4 @@
+import {PenPresetIcon} from "./PenPresetIcon";
 import {VStack} from "@astryxdesign/core/VStack";
 import {HStack} from "@astryxdesign/core/HStack";
 import {Text} from "@astryxdesign/core/Text";
@@ -11,7 +12,7 @@ import {useState,useRef,useEffect} from "react";
 import {LineStylePicker} from "./LineStylePicker";
 import {lineFlags,lineStyle} from "./strokeStyle";
 import {useDismiss} from "./useDismiss";
-import { ClipboardPaste, Undo2, Redo2, PenLine, Highlighter, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2, Contrast, PaintBucket } from "lucide-react";
+import { ClipboardPaste, Undo2, Redo2, Eraser, Lasso, Hand, Plus, Gauge, Shapes, X, ScanLine, Trash2, Contrast, PaintBucket } from "lucide-react";
 import type {LucideIcon} from "lucide-react";
 import type { Tool } from "./Sheet";
 import type {FillSettings} from "./fill";
@@ -59,11 +60,12 @@ export function EditorToolbar(props: Props) {
           {penIds(preferences,kind).map((id,i)=>{
             const label=`${kind==="marker"?"蛍光ペン":"ペン"}${i+1}`;
             return <ActionButton key={id} data-pen-id={id} className={"tool pen-preset "+(drawing&&preferences.activePen===id?"active":"")}
-              aria-label={label} aria-pressed={drawing&&preferences.activePen===id} title={label}
+              aria-label={label} aria-pressed={drawing&&preferences.activePen===id} title={`${label}（自動切り替え：${preferences.pens[id].autoColor?.enabled?"オン":"オフ"}）`}
+              aria-description={`自動切り替え：${preferences.pens[id].autoColor?.enabled?"オン":"オフ"}`} data-auto-color={!!preferences.pens[id].autoColor?.enabled}
               aria-expanded={drawing&&preferences.activePen===id&&open} aria-controls="tool-settings"
               onClick={e=>{anchor.current=e.currentTarget;if(drawing&&preferences.activePen===id)setOpen(v=>!v);else{setOpen(false);props.onPen(id);}}}
-              style={{"--pen-color":penColor(preferences.pens[id],id,dark)} as React.CSSProperties}>
-              {kind==="marker"?<Highlighter size={19}/>:<PenLine size={19}/>}<small>{i+1}</small>
+              >
+              <PenPresetIcon kind={kind} color={penColor(preferences.pens[id],id,dark)} autoColor={preferences.pens[id].autoColor}/><small>{i+1}</small>
             </ActionButton>;
           })}
           <ActionButton className="tool add-pen" aria-label={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} title={kind==="pen"?"ペンを追加":"蛍光ペンを追加"} onClick={()=>{pendingNew.current=props.onAddPen(kind);setOpen(false);}}><Plus size={17}/></ActionButton>

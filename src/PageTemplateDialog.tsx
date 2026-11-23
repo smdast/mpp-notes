@@ -1,3 +1,4 @@
+import {ErrorBanner} from "./ErrorBanner";
 import {useEffect,useRef,useState} from "react";
 import {Selector} from "@astryxdesign/core/Selector";
 import {Button} from "@astryxdesign/core/Button";
@@ -26,7 +27,7 @@ export function PageTemplateDialog({page,number,dark,onChange,onApply,onClose}:P
   void imageStroke(file,page).then(s=>{if(alive.current&&request.current===epoch)onChange({backgroundImage:s.image});}).catch(e=>{if(alive.current)setError(e.message);}).finally(()=>{if(alive.current)setLoading(false);});
  }}/>
  {page.backgroundImage&&<Button label="背景画像を解除" isDisabled={loading} onClick={()=>onChange({backgroundImage:undefined})}/>}
- {loading&&<p role="status">画像を読み込み中…</p>}{error&&<p role="alert">{error}</p>}
+ {loading&&<p role="status">画像を読み込み中…</p>}{error&&<ErrorBanner message={error} onDismiss={()=>setError("")}/> }
  <p>「全ページに適用」で、同じノートの用紙を揃えます。PDFの背景は保持します。</p>
  <HStack gap={2} hAlign="end"><Button label="全ページに適用" isDisabled={loading} onClick={onApply}/><Button label="閉じる" variant="primary" onClick={onClose}/></HStack>
  </AppDialog>;

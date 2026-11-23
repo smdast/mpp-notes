@@ -76,14 +76,42 @@ it("persists individual pen background colors even when the mode is off",async()
   prefs.pens.pen1.autoColor.onLight="bad";
   expect(readPreferences(prefs).pens.pen1.autoColor).toBeUndefined();
 });
-it("samples the background at the page-space start on a scaled canvas and blends transparent pixels",()=>{
+it("uses the surrounding majority in page coordinates instead of an isolated starting pixel",()=>{
   const colors={enabled:true,onLight:"#111111",onDark:"#eeeeee"},page={width:100,height:200};
-  const getImageData=(x:number,y:number)=>({data:x===50&&y===75?[0,0,0,255]:[0,0,0,0]});
-  const canvas={width:200,height:300,getContext:()=>({getImageData})} as unknown as HTMLCanvasElement;
+  const paper=createCanvas(200,300),ctx=paper.getContext("2d");
+  const canvas=Object.assign(paper,{ownerDocument:{createElement:()=>createCanvas(1,1)}}) as unknown as HTMLCanvasElement;
+  ctx.fillStyle="#000000";ctx.fillRect(0,0,200,300);ctx.fillStyle="#ffffff";ctx.fillRect(49,74,3,3);
   expect(strokeStartColor(colors,canvas,{x:25,y:50},page,"#fffefa")).toBe(colors.onDark);
-  expect(strokeStartColor(colors,canvas,{x:27,y:50},page,"#fffefa")).toBe(colors.onLight);
-  expect(strokeStartColor(colors,canvas,{x:27,y:50},page,"#1e2822")).toBe(colors.onDark);
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,200,300);ctx.fillStyle="#000000";ctx.fillRect(49,74,3,3);
+  expect(strokeStartColor(colors,canvas,{x:25,y:50},page,"#fffefa")).toBe(colors.onLight);
+  // Beyond the paper edge must not be counted as transparent/dark background.
+  expect(strokeStartColor(colors,canvas,{x:0,y:0},page,"#000000")).toBe(colors.onLight);
+  ctx.clearRect(0,0,200,300);
+  expect(strokeStartColor(colors,canvas,{x:25,y:50},page,"#1e2822")).toBe(colors.onDark);
+  expect(strokeStartColor(colors,canvas,{x:25,y:50},page,"#fffefa")).toBe(colors.onLight);
   expect(strokeStartColor(colors,null,{x:0,y:0},page,"#fffefa")).toBe(colors.onLight);
+});
+
+it("uses the surrounding image area through a transparent hole without depending on render resolution",async()=>{
+ const colors={enabled:true,onLight:"#111111",onDark:"#eeeeee"};
+ vi.stubGlobal("Image",Image);
+ try{
+  for(const scale of [1,3]){
+   const paper=createCanvas(100*scale,100*scale),ctx=paper.getContext("2d");
+   ctx.fillStyle="#ffffff";ctx.fillRect(0,0,paper.width,paper.height);
+   const sticker=createCanvas(100,100),image=sticker.getContext("2d");
+   image.fillStyle="#000000";image.fillRect(0,0,100,100);image.clearRect(49,49,3,3);
+   const layer:Stroke={id:`surrounding-${scale}`,image:sticker.toDataURL(),tool:"pen",width:1,color:"#000000",points:[{x:0,y:0,p:.5},{x:100,y:0,p:.5},{x:100,y:100,p:.5},{x:0,y:100,p:.5}]};
+   const decoded=await prepareImages([layer]);
+   const canvas=Object.assign(paper,{ownerDocument:{createElement:()=>createCanvas(1,1)}}) as unknown as HTMLCanvasElement;
+   expect(strokeStartColor(colors,canvas,{x:50,y:50},{width:100,height:100},"#ffffff",[layer])).toBe(colors.onDark);
+   image.fillStyle="#ffffff";image.fillRect(0,0,100,100);image.fillStyle="#000000";image.fillRect(49,49,3,3);
+   const inverse={...layer,id:`inverse-${scale}`,image:sticker.toDataURL()};
+   const inverseDecoded=await prepareImages([inverse]);
+   expect(strokeStartColor(colors,canvas,{x:50,y:50},{width:100,height:100},"#ffffff",[inverse])).toBe(colors.onLight);
+   expect(decoded.length+inverseDecoded.length).toBe(2);
+  }
+ }finally{vi.unstubAllGlobals();}
 });
 
 it("samples rotated inserted images in drawing order and sees through transparent pixels",async()=>{

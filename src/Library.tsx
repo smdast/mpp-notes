@@ -1,3 +1,4 @@
+import {ErrorBanner} from "./ErrorBanner";
 import {HStack} from "@astryxdesign/core/HStack";
 import {FolderMenu} from "./FolderMenu";
 import {Selector} from "@astryxdesign/core/Selector";
@@ -40,7 +41,7 @@ type Props = {
   onImportNote:()=>void;
   error: string;
   onDismiss: () => void;
-  onRetry: () => void;
+  onRetry?: () => void;
   onToggleSidebar: () => void;
 };
 export function Library({
@@ -105,13 +106,7 @@ export function Library({
 
         </div>
       </header>
-      {error && (
-        <div className="error-banner" role="alert">
-          <span>{error}</span>
-          <button onClick={onRetry}>再保存</button>
-          <button onClick={onDismiss}>閉じる</button>
-        </div>
-      )}
+      {error&&<ErrorBanner message={error} onDismiss={onDismiss} onRetry={onRetry}/>}
       <div className="library-breadcrumb">
         <button data-library-target="*" onClick={() => onFolder("*")}>すべてのノート</button>
         {folder === "" ? (

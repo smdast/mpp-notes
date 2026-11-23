@@ -530,3 +530,24 @@ input[type=range]{accent-color:var(--color-accent)}
 .auto-pen-colors{display:flex;flex-direction:column;grid-template-columns:none}
 .auto-pen-colors .astryx-button{flex-shrink:0;min-width:calc(var(--spacing-1) * 28)}
 }
+
+@layer notes {
+.pen-preset::after{display:none}
+.editor-toolbar .tool-picker .tool{flex-basis:var(--spacing-12);min-width:var(--spacing-12);width:var(--spacing-12);height:var(--spacing-12)}
+.pen-preset-icon{flex-shrink:0;overflow:visible}
+.pen-preset small{inset-inline-end:var(--spacing-1);inset-block-end:var(--spacing-1);font-size:var(--font-size-3xs)}
+.topbar.note-header-toolbar{display:block;height:auto;min-height:calc(var(--spacing-1) * 16);padding-block:var(--spacing-3)}
+.note-header-toolbar>[role="toolbar"]{width:100%;min-width:0;flex-wrap:nowrap}
+.note-header-toolbar>[role="toolbar"]>:first-child{min-width:0;flex:1 1 0;flex-wrap:nowrap}
+.note-header-toolbar>[role="toolbar"]>:last-child{flex:0 0 auto;flex-wrap:nowrap}
+.note-header-toolbar .breadcrumb{width:100%;min-width:0}
+}
+
+@layer notes {
+.view-editor .editor-toolbar{align-items:center}
+.editor-toolbar .history-tools{align-self:center;align-items:center}
+}
+
+@layer notes {
+.astryx-toast:has([data-notes-floating-banner]){padding:0;background:transparent;border:0;box-shadow:none}
+}
