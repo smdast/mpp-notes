@@ -564,10 +564,17 @@ input[type=range]{accent-color:var(--color-accent)}
 .toolbar-placement{flex-shrink:0}
 .toolbar-placement .tool{width:var(--spacing-10);min-width:var(--spacing-10)}
 .toolbar-drag-handle{touch-action:none;cursor:grab}
-.view-editor .editor-toolbar.is-floating{position:fixed;z-index:80;left:var(--spacing-4);top:calc(var(--spacing-1) * 24);width:min(calc(100dvw - var(--spacing-8)),calc(var(--spacing-1) * 250));max-width:calc(100vw - var(--spacing-8));border:1px solid var(--color-border-emphasized);border-radius:var(--radius-container);box-shadow:var(--shadow-high);padding:var(--spacing-3);gap:var(--spacing-2)}
+.view-editor .editor-toolbar.is-floating{position:fixed;z-index:80;left:var(--spacing-4);top:calc(var(--spacing-1) * 24);width:max-content;max-width:calc(100dvw - var(--spacing-8));grid-template-columns:max-content minmax(0,max-content) auto;border:1px solid var(--color-border-emphasized);border-radius:var(--radius-full);box-shadow:var(--shadow-high);padding-block:var(--spacing-0-5);padding-inline:var(--spacing-3);gap:var(--spacing-1)}
 .editor-toolbar[data-dragging="true"]{user-select:none}
 .editor-toolbar[data-dragging="true"] .toolbar-drag-handle{cursor:grabbing}
 @media(max-width:650px){.view-editor .editor-toolbar{grid-template-columns:max-content minmax(0,1fr) auto}}
 }
 
 @layer notes {.view-editor .editor-toolbar.is-floating[data-suspended]{visibility:hidden}}
+
+@layer notes {
+.editor-toolbar.is-floating .toolbar-content{padding:var(--spacing-0-5)}
+.editor-toolbar.is-floating .history-tools{gap:var(--spacing-0-5)}
+.editor-toolbar.is-floating .tool-picker,.editor-toolbar.is-floating .tool-group{gap:var(--spacing-1)}
+.editor-toolbar.is-floating .pen-family+.pen-family{padding-inline-start:var(--spacing-2)}
+}
