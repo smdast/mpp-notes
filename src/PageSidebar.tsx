@@ -1,7 +1,7 @@
 import {Popover} from "@astryxdesign/core/Popover";
 import {useEffect,useLayoutEffect,useRef,useState,type PointerEvent as PE} from "react";
 import {createPortal} from "react-dom";
-import {MoreVertical,Plus,Copy,Trash2,FilePenLine,ArrowUp,ArrowDown,PanelLeftClose,PanelLeftOpen} from "lucide-react";
+import {MoreVertical,Plus,Copy,Trash2,FilePenLine,ArrowUp,ArrowDown} from "lucide-react";
 import type {Page} from "./model";
 import {PagePreview} from "./PagePreview";
 import {pdfjs,pdfOptions} from "./pdf";
@@ -10,7 +10,7 @@ import {PageTemplateDialog} from "./PageTemplateDialog";
 import {ScrollMotion} from "./motion";
 import {PAGE_HOLD_MS,PAGE_HOLD_SLOP,pageGridSlot,pageDropTarget} from "./pageDrag";
 import {shortcutAction,shortcutHint,type ShortcutMap} from "./shortcuts";
-type Props={shortcuts:ShortcutMap;pdf?:Uint8Array;collapsed:boolean;onCollapse:(collapsed:boolean)=>void;pages:Page[];active:string;dark:boolean;onSelect:(id:string)=>void;onAdd:()=>void;onInsert:(id:string,after:boolean)=>void;onDuplicate:(id:string)=>void;onDelete:(id:string)=>void;onReorder:(from:string,to:string,after:boolean)=>void;onTemplate:(id:string,patch:Partial<Page>)=>void;onApply:(id:string)=>void;onError:(s:string)=>void};
+type Props={shortcuts:ShortcutMap;pdf?:Uint8Array;collapsed:boolean;pages:Page[];active:string;dark:boolean;onSelect:(id:string)=>void;onAdd:()=>void;onInsert:(id:string,after:boolean)=>void;onDuplicate:(id:string)=>void;onDelete:(id:string)=>void;onReorder:(from:string,to:string,after:boolean)=>void;onTemplate:(id:string,patch:Partial<Page>)=>void;onApply:(id:string)=>void;onError:(s:string)=>void};
 type Drag={id:string;slot:number;src:string;width:number;height:number};
 type Gesture={id:string;pointer:number;type:string;x:number;y:number;startX:number;startY:number;lastY:number;time:number;velocity:number;started:boolean;scrolling:boolean;offsetX:number;offsetY:number;width:number;height:number;slot:number;src:string};
 export function PageSidebar(props:Props){
@@ -33,6 +33,7 @@ export function PageSidebar(props:Props){
  }
  useEffect(()=>{if(list.current)motion.current=new ScrollMotion(list.current);return()=>{clearTimeout(hold.current);cancelAnimationFrame(frame.current);gesture.current=null;motion.current?.destroy();};},[]);
  useEffect(()=>{if(gesture.current)cancel();},[props.pages]);
+ useEffect(()=>{if(props.collapsed){cancel();setMenu(null);setTemplateId(null);}},[props.collapsed]);
  useEffect(()=>{if(menu)popup.current?.querySelector<HTMLButtonElement>("button")?.focus();},[menu?.id]);
  useEffect(()=>{
   const close=(e:Event)=>{if(!(e.target instanceof Element)||!e.target.closest(".page-context-menu,.page-more"))setMenu(null);};
@@ -103,7 +104,7 @@ export function PageSidebar(props:Props){
  const tiles:(Page|null)[]=drag?props.pages.filter(p=>p.id!==drag.id):props.pages;
  if(drag)tiles.splice(drag.slot,0,null);
  return <aside className={"page-strip "+(props.collapsed?"pages-collapsed":"")} aria-label="ページ一覧">
- <div className="page-strip-header">{!props.collapsed&&<span className="page-strip-heading">ページ <small>{props.pages.length}</small></span>}<button className="page-strip-toggle" aria-label={props.collapsed?"ページ一覧を開く":"ページ一覧をたたむ"} title={props.collapsed?"ページ一覧を開く":"ページ一覧をたたむ"} aria-expanded={!props.collapsed} aria-controls="page-preview-list" onClick={()=>{cancel();setMenu(null);setTemplateId(null);props.onCollapse(!props.collapsed);}}>{props.collapsed?<PanelLeftOpen size={19}/>:<PanelLeftClose size={19}/>}</button></div>
+ <div className="page-strip-header"><span className="page-strip-heading">ページ <small>{props.pages.length}</small></span></div>
  <div id="page-preview-list" hidden={props.collapsed} ref={list} className={"page-list page-grid "+(drag?"sorting":"")} onScroll={()=>setMenu(null)} onContextMenu={e=>{if(gesture.current)e.preventDefault();}} onPointerMove={move} onPointerUp={e=>end(e)} onPointerCancel={e=>end(e,true)} onLostPointerCapture={e=>end(e,true)} onPointerDownCapture={e=>{if(gesture.current&&gesture.current.pointer!==e.pointerId)cancel();}}>
  {tiles.map(p=>{
   if(!p)return <div key="drop-slot" className="page-drop-cell" aria-label="移動先"><span className="page-drop-slot" aria-hidden="true"/></div>;

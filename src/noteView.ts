@@ -1,5 +1,5 @@
 import type {Page} from "./model";
-import {MIN_ZOOM,MAX_ZOOM,PAGE_START,PAGE_LABEL,PAGE_GAP,type ScrollDirection} from "./scrolling";
+import {MIN_ZOOM,MAX_ZOOM,PAGE_LABEL,PAGE_GAP,verticalPageInset,horizontalPageLayout,horizontalPageIndex,type ScrollDirection} from "./scrolling";
 export type NoteView={version:1;pageId:string;index:number;zoom:number;x:number;y:number;direction?:ScrollDirection};
 type ViewPage=Pick<Page,"id"|"height"|"width">;
 type ViewStorage=Pick<Storage,"getItem"|"setItem"|"removeItem">;
@@ -23,8 +23,10 @@ export function captureNoteView(pages:ViewPage[],zoom:number,left:number,top:num
   const horizontal=direction==="horizontal",label=horizontal?0:PAGE_LABEL;
   const offset=horizontal?left:top;
   const extent=horizontal?"width":"height";
-  let start=PAGE_START,index=0;
-  for(;index<pages.length-1;index++){
+  const frames=horizontal?horizontalPageLayout(pages,zoom,viewportWidth):[];
+  let start=verticalPageInset(pages,zoom,viewportHeight),index=0;
+  if(horizontal){index=horizontalPageIndex(frames.map(f=>f.left),left+viewportWidth/2);start=frames[index].left;}
+  else for(;index<pages.length-1;index++){
     const next=start+label+pages[index][extent]*zoom+PAGE_GAP;
     // The leading gutter can already be showing the next page after a sidebar jump.
     if(offset<next-PAGE_GAP)break;
@@ -41,16 +43,17 @@ export function restoreNoteView(pages:ViewPage[],view:NoteView,viewportWidth:num
   const found=pages.findIndex(p=>p.id===view.pageId),index=found<0?Math.min(view.index,pages.length-1):found;
   const horizontal=direction==="horizontal",label=horizontal?0:PAGE_LABEL;
   const extent=horizontal?"width":"height";
-  const start=PAGE_START+pages.slice(0,index).reduce((sum,p)=>sum+label+p[extent]*view.zoom+PAGE_GAP,0)+label;
+  const start=horizontal?horizontalPageLayout(pages,view.zoom,viewportWidth)[index].left:
+    verticalPageInset(pages,view.zoom,viewportHeight)+pages.slice(0,index).reduce((sum,p)=>sum+label+p[extent]*view.zoom+PAGE_GAP,0)+label;
   const sameDirection=(view.direction??"vertical")===direction;
   const offset=found<0?0:sameDirection?Math.max(-(PAGE_GAP+label)/view.zoom,Math.min(pages[index][extent]+PAGE_GAP/view.zoom,view.y)):-label/view.zoom;
   const cross=horizontal?viewportHeight:viewportWidth;
   const centre=crossCentre(pages,view.zoom,cross,horizontal);
-  const primary=Math.max(0,start+offset*view.zoom);
+  const primary=horizontal&&pages[index].width*view.zoom<=viewportWidth?start:Math.max(0,start+offset*view.zoom);
   const secondary=sameDirection?Math.max(0,centre+view.x*view.zoom-cross/2):0;
   return {pageId:pages[index].id,left:horizontal?primary:secondary,top:horizontal?secondary:primary};
 }
 function crossCentre(pages:ViewPage[],zoom:number,viewport:number,horizontal:boolean){
   const extent=horizontal?"height":"width",label=horizontal?PAGE_LABEL:0;
-  return Math.max(viewport,Math.max(...pages.map(p=>p[extent]))*zoom+96+label)/2+label/2;
+  return Math.max(viewport,Math.max(...pages.map(p=>p[extent]))*zoom+label)/2+label/2;
 }

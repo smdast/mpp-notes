@@ -1,6 +1,6 @@
 import {ScrollMotion} from "./motion";
 import {it,expect,vi} from "vitest";
-import {pageAfterSwipe,horizontalZoomPosition,touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
+import {horizontalPageLayout,horizontalPageIndex,verticalPageInset,pageAfterSwipe,horizontalZoomPosition,touchGeometry,pinchViewport,zoomScrollLeft,zoomScrollTop} from "./scrolling";
 const pages=[{height:1123},{height:842},{height:1123}];
 it("starts at the actual two-finger midpoint without a first-move pan or zoom",()=>{
   const first={x:170,y:220},second={x:470,y:420};
@@ -15,7 +15,7 @@ it("starts at the actual two-finger midpoint without a first-move pan or zoom",(
 it("keeps a page point under a moving pinch centre, including fixed labels and gaps",()=>{
   const from=.7,to=1.8,pageX=265,pageY=360,index=1;
   const pageTop=(zoom:number)=>16+pages.slice(0,index).reduce((sum,p)=>sum+24+p.height*zoom+34,0)+24;
-  const stackCentre=(zoom:number)=>Math.max(900,794*zoom+96)/2;
+  const stackCentre=(zoom:number)=>Math.max(900,794*zoom)/2;
   const anchor={zoom:from,left:0,top:pageTop(from)+pageY*from-290,x:stackCentre(from)+(pageX-794/2)*from,y:290,distance:200,viewportWidth:900};
   const current={x:anchor.x+35,y:anchor.y-24,distance:200*to/from};
   const next=pinchViewport(pages,794,900,anchor,current);
@@ -38,7 +38,7 @@ it("accounts for scrollbar changes without moving the page point at the viewport
   expect(16+24+pageY*to-next).toBeCloseTo(newHeight/2);
   // Zooming out can remove the vertical scrollbar and widen the viewport.
   const left=zoomScrollLeft(794,890,2,.7,320,445,900)+445-450;
-  const oldPoint=(320+445-(794*2+96)/2)/2;
+  const oldPoint=(320+445-794*2/2)/2;
   expect(450+oldPoint*.7-left).toBeCloseTo(450);
 });
 it("preserves horizontal anchors when switching between centred and horizontally scrollable pages",()=>{
@@ -57,8 +57,8 @@ it("does not scale page labels and gaps when anchoring between pages",()=>{
 
 it("keeps a point on a mixed-size page under the pinch midpoint in a horizontal stack",()=>{
   const landscapePages=[{width:794,height:1123},{width:842,height:612}];
-  const pageLeft=(zoom:number)=>16+794*zoom+34;
-  const paperCentre=(zoom:number,height:number)=>Math.max(height,1123*zoom+120)/2+12;
+  const pageLeft=(zoom:number)=>horizontalPageLayout(landscapePages,zoom,900)[1].paperLeft;
+  const paperCentre=(zoom:number,height:number)=>Math.max(height,1123*zoom+24)/2+12;
   const x=240,y=320,point={x:310,y:280},from=.7,to=2.4;
   const anchor={x,y,zoom:from,distance:200,viewportWidth:900,viewportHeight:600,
     left:pageLeft(from)+200*from-x,top:paperCentre(from,600)-30*from-y};
@@ -94,4 +94,38 @@ it("settles smooth paging at the exact target despite rounded browser scroll off
     expect(nextFrame).toBeUndefined();
     motion.destroy();
   }finally{vi.unstubAllGlobals();}
+});
+
+
+it("reserves a whole viewport for each horizontal page at low zoom, including mixed sizes",()=>{
+  const sizes=[{width:794},{width:612},{width:1200}];
+  for(const zoom of [.25,.4,.7]){
+    const frames=horizontalPageLayout(sizes,zoom,900);
+    frames.forEach((frame,i)=>{
+      expect(frame.width).toBeGreaterThanOrEqual(900);
+      expect(frame.paperLeft).toBeGreaterThanOrEqual(frame.left);
+      expect(horizontalPageIndex(frames.map(f=>f.left),frame.left)).toBe(i);
+      if(i)expect(frame.left).toBeCloseTo(frames[i-1].left+frames[i-1].width+34);
+    });
+  }
+});
+it("keeps the same single page snapped while zooming out and after viewport resizing",()=>{
+  const sizes=[{width:794,height:1123},{width:612,height:842},{width:1200,height:1500}];
+  const old=horizontalPageLayout(sizes,2,900);
+  const anchor={zoom:2,left:old[1].left+100,top:210,x:450,y:300,distance:200,viewportWidth:900,viewportHeight:600};
+  for(const viewportWidth of [430,900,1200]){
+    const target=horizontalZoomPosition(sizes,anchor,.25,{x:viewportWidth/2,y:300},600,viewportWidth);
+    const frames=horizontalPageLayout(sizes,.25,viewportWidth);
+    expect(target.left).toBe(frames[1].left);
+    expect(frames[0].left+frames[0].width).toBeLessThanOrEqual(target.left);
+    expect(frames[2].left).toBeGreaterThanOrEqual(target.left+viewportWidth);
+  }
+});
+it("shrinks optional vertical gutters before a fitting page can overflow",()=>{
+  const single=[{height:1123}],height=600,zoom=(height-24-10)/1123;
+  const inset=verticalPageInset(single,zoom,height);
+  expect(inset).toBe(5);
+  expect(inset*2+24+1123*zoom).toBeCloseTo(height);
+  expect(verticalPageInset(single,1,height)).toBe(0);
+  expect(zoomScrollLeft(794,800,.7,1,0,400)).toBe(0);
 });

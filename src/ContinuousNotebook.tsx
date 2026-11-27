@@ -1,4 +1,10 @@
 import {observePage} from "./pageVisibility";
+import {VStack} from "@astryxdesign/core/VStack";
+import {HStack} from "@astryxdesign/core/HStack";
+import {Text} from "@astryxdesign/core/Text";
+import {ArrowUp,ArrowLeft,Check} from "lucide-react";
+import {PagePreview} from "./PagePreview";
+import {nextPaperGeometry,pagePullOffset,pagePullHandoff,advanceVerticalPagePull,isForeignPointerCaptureLoss,type PullGeometry,type VerticalPullAnchor} from "./pagePull";
 import {previewWork} from "./previewWork";
 import {
   memo,
@@ -14,8 +20,8 @@ import {
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Note, Page, Stroke } from "./model";
 import { ScrollMotion } from "./motion";
-import { pagePaperColor } from "./paper";
-import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, horizontalZoomPosition, pageAfterSwipe, PAGE_START, type PinchAnchor, type ScrollDirection } from "./scrolling";
+import { pagePaperColor,newPageFrom } from "./paper";
+import { zoomScrollTop, zoomScrollLeft, clampZoom, touchGeometry, pinchViewport, horizontalZoomPosition, horizontalPageIndex, verticalPageInset, pageAfterSwipe, PAGE_LABEL, PAGE_GAP, type PinchAnchor, type ScrollDirection } from "./scrolling";
 import { Sheet, type Tool } from "./Sheet";
 import { pdfjs, pdfOptions } from "./pdf";
 import { shouldAddPage, type EraserMode } from "./editing";
@@ -30,10 +36,12 @@ import type {AutoPenColor} from "./preferences";
 import type {SelectionButtonAction} from "./penInput";
 import {readNoteView,captureNoteView,restoreNoteView,saveNoteView,type NoteView} from "./noteView";
 type PageSwipe = {
-  x:number;y:number;left:number;index:number;starts:number[];
+  x:number;y:number;left:number;index:number;starts:number[];max:number;
   axis?:"horizontal"|"vertical";
   deltaX:number;
 };
+const notePageIds=(note:Note)=>new Set(note.pages.map(p=>p.id));
+type PullVisual={geometry:PullGeometry;page:Page;offset:number;returning:boolean};
 type Props = {
   selectionButton:SelectionButtonAction;
   eraserButton:SelectionButtonAction;
@@ -74,6 +82,7 @@ const PageSlot=memo(function PageSlot({
   page,
   index,
   isActive,
+  isNew,
   root,
   document,
   props,
@@ -84,6 +93,7 @@ const PageSlot=memo(function PageSlot({
   page: Page;
   index: number;
   isActive:boolean;
+  isNew:boolean;
   root: RefObject<HTMLDivElement | null>;
   document?: PDFDocumentProxy;
   props: PageSettings;
@@ -100,12 +110,13 @@ const PageSlot=memo(function PageSlot({
   return (
     <div
       ref={slot}
-      className="continuous-page"
+      className={"continuous-page"+(isNew?" page-added":"")}
       data-page-id={page.id}
       style={{
-        width: `calc(${page.width}px * var(--notebook-zoom, ${props.zoom}))`,
+        "--paper-width": `calc(${page.width}px * var(--notebook-zoom, ${props.zoom}))`,
+        width: "var(--page-frame-width, var(--paper-width))",
         height: `calc(${page.height}px * var(--notebook-zoom, ${props.zoom}) + 24px)`,
-      }}
+      } as CSSProperties}
     >
       <div className="page-label">
         {index + 1} / {props.pageCount}
@@ -192,26 +203,64 @@ export function ContinuousNotebook(props: Props) {
 
   const viewport = useRef<HTMLDivElement>(null),
     [document, setDocument] = useState<PDFDocumentProxy>(),
-    [pull, setPull] = useState(0),
+    [pull, setPullValue] = useState(0),
     drawing = useRef(new Set<string>());
+  const stack=useRef<HTMLDivElement>(null),[pullVisual,setPullVisual]=useState<PullVisual>();
+  const pullVisualRef=useRef<PullVisual|undefined>(undefined),pullTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const pullHandoff=useRef<{id:string;left:number;top:number}|null>(null),swipeArrival=useRef<string|undefined>(undefined);
   const touches = useRef(new Map<number, { x: number; y: number }>()),
     gesture = useRef<{ x: number; y: number; distance: number } | null>(null),
-    swipe = useRef({ distance: 0, multi: false }),
+    swipe = useRef<{distance:number;multi:boolean;vertical:VerticalPullAnchor|null}>({ distance: 0, multi: false,vertical:null }),
     frame = useRef(0);
   const pageSwipe=useRef<PageSwipe|null>(null);
+  const previousPages=useRef<Set<string>|undefined>(undefined),[addedPage,setAddedPage]=useState<string>();
+  previousPages.current??=notePageIds(props.note);
   const { note, zoom, onActive, onError } = props;
   const horizontal=props.direction==="horizontal";
   const previousDirection=useRef(props.direction);
   const layoutKey=useMemo(()=>note.pages.map(p=>`${p.id}:${p.width}:${p.height}`).join("|"),[note.pages]);
   const maxPageWidth=Math.max(...note.pages.map(p=>p.width));
   const maxPageHeight=Math.max(...note.pages.map(p=>p.height));
+  const pagesHeight=useMemo(()=>({height:note.pages.reduce((sum,p)=>sum+p.height,0),spacing:note.pages.length*PAGE_LABEL+Math.max(0,note.pages.length-1)*PAGE_GAP}),[layoutKey]);
   const liveZoom=useRef(zoom),pinchAnchor=useRef<PinchAnchor|null>(null),zoomFrame=useRef(0);
   const pendingZoom=useRef<{anchor:PinchAnchor;point:{x:number;y:number;distance:number}}|null>(null),committedZoom=useRef<number|null>(null);
   const scrollPosition=useRef({left:0,top:0}),viewportSize=useRef({width:0,height:0});
   const motion = useRef<ScrollMotion | null>(null),
     velocity = useRef({ x: 0, y: 0, time: 0 });
+  function resetPull(animate=false){
+    if(animate&&pullVisualRef.current?.returning)return;
+    clearTimeout(pullTimer.current);setPullValue(0);
+    const visual=pullVisualRef.current;
+    const returning=animate&&visual&&visual.offset>0;
+    stack.current?.classList.toggle("pull-returning",!!returning);
+    if(stack.current)stack.current.style.transform="";
+    if(returning){
+      const next={...visual,offset:0,returning:true};pullVisualRef.current=next;setPullVisual(next);
+      pullTimer.current=setTimeout(()=>{stack.current?.classList.remove("pull-returning");pullVisualRef.current=undefined;setPullVisual(undefined);},240);
+    }else{pullVisualRef.current=undefined;setPullVisual(undefined);}
+  }
+  function setPull(distance:number){
+    if(distance<=0){resetPull(true);return;}
+    const v=viewport.current,s=stack.current;if(!v||!s)return;
+    let visual=pullVisualRef.current;
+    if(!visual||visual.returning){
+      resetPull();
+      const slot=v.querySelector<HTMLElement>(".continuous-page:last-child"),paper=slot?.querySelector<HTMLElement>(".sheet,.page-placeholder");
+      if(!slot||!paper)return;
+      visual={geometry:nextPaperGeometry(latest.current.direction,v.getBoundingClientRect(),slot.getBoundingClientRect(),paper.getBoundingClientRect()),page:newPageFrom(latest.current.note.pages.at(-1),latest.current.dark),offset:0,returning:false};
+    }
+    const offset=pagePullOffset(distance,visual.geometry),next={...visual,offset,returning:false};
+    s.style.transform=latest.current.direction==="horizontal"?`translate3d(${-offset}px,0,0)`:`translate3d(0,${-offset}px,0)`;
+    pullVisualRef.current=next;setPullVisual(next);setPullValue(distance);
+  }
+  function measureViewport(v:HTMLDivElement){
+    if(!v.clientWidth||!v.clientHeight)return;
+    v.style.setProperty("--viewport-width",`${v.clientWidth}px`);
+    v.style.setProperty("--viewport-height",`${v.clientHeight}px`);
+  }
   function capturePosition(v=viewport.current){
     if(!positionReady.current||!v||v.clientWidth<=0||v.clientHeight<=0||previousDirection.current!==latest.current.direction)return;
+    if(latest.current.direction==="horizontal"&&viewportSize.current.width&&viewportSize.current.width!==v.clientWidth)return;
     viewPosition.current=captureNoteView(latest.current.note.pages,liveZoom.current,v.scrollLeft,v.scrollTop,v.clientWidth,latest.current.direction,v.clientHeight);
   }
   function persistPosition(v?:HTMLDivElement|null){
@@ -288,9 +337,10 @@ export function ContinuousNotebook(props: Props) {
     // Resize the existing surfaces together; never resize their canvas buffers
     // or restart PDF rendering while the fingers are moving.
     v.style.setProperty("--notebook-zoom",String(next));
+    measureViewport(v);
     const target=horizontal
-      ? horizontalZoomPosition(latest.current.note.pages,pending.anchor,next,pending.point,v.clientHeight)
-      : pinchViewport(latest.current.note.pages,maxPageWidth,v.clientWidth,pending.anchor,pending.point);
+      ? horizontalZoomPosition(latest.current.note.pages,pending.anchor,next,pending.point,v.clientHeight,v.clientWidth)
+      : pinchViewport(latest.current.note.pages,maxPageWidth,v.clientWidth,pending.anchor,pending.point,v.clientHeight);
     liveZoom.current=next;
     v.scrollLeft=target.left;v.scrollTop=target.top;
     scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
@@ -299,6 +349,7 @@ export function ContinuousNotebook(props: Props) {
   function finishZoom() {
     flushZoom();pinchAnchor.current=null;
     const v=viewport.current;if(!v)return;
+    measureViewport(v);
     if(liveZoom.current!==latest.current.zoom){committedZoom.current=liveZoom.current;latest.current.setZoom(liveZoom.current);}
     else {v.style.removeProperty("--notebook-zoom");v.classList.remove("zooming");v.dispatchEvent(new Event("notebook-zoom-settled"));}
     scroll();
@@ -308,6 +359,7 @@ export function ContinuousNotebook(props: Props) {
     const v=viewport.current;if(!v)return;
     const openingZoom=initialView?.zoom??.7;
     v.style.setProperty("--notebook-zoom",String(openingZoom));
+    measureViewport(v);
     liveZoom.current=openingZoom;
     if(initialView){
       const restored=restoreNoteView(latest.current.note.pages,initialView,v.clientWidth,props.direction,v.clientHeight);
@@ -324,6 +376,7 @@ export function ContinuousNotebook(props: Props) {
   useLayoutEffect(() => {
     const v = viewport.current;
     if (v && previousZoom.current !== zoom) {
+      resetPull();
       motion.current?.stop();
       if(committedZoom.current!==zoom){
         cancelAnimationFrame(zoomFrame.current);zoomFrame.current=0;pendingZoom.current=null;
@@ -331,14 +384,16 @@ export function ContinuousNotebook(props: Props) {
         const from=liveZoom.current,position=scrollPosition.current,size=viewportSize.current;
         const ax=(size.width||v.clientWidth)/2,ay=(size.height||v.clientHeight)/2;
         v.style.setProperty("--notebook-zoom",String(zoom));
+        measureViewport(v);
         if(horizontal){
           const target=horizontalZoomPosition(note.pages,
             {...position,zoom:from,x:ax,y:ay,distance:1,viewportWidth:size.width,viewportHeight:size.height||v.clientHeight},
-            zoom,{x:v.clientWidth/2,y:v.clientHeight/2},v.clientHeight);
+            zoom,{x:v.clientWidth/2,y:v.clientHeight/2},v.clientHeight,v.clientWidth);
           v.scrollLeft=target.left;v.scrollTop=target.top;
         }else{
           v.scrollLeft=zoomScrollLeft(maxPageWidth,size.width||v.clientWidth,from,zoom,position.left,ax,v.clientWidth)+ax-v.clientWidth/2;
-          v.scrollTop=zoomScrollTop(note.pages,from,zoom,position.top,ay,undefined,v.clientHeight/2);
+          v.scrollTop=zoomScrollTop(note.pages,from,zoom,position.top,ay,undefined,v.clientHeight/2,
+            verticalPageInset(note.pages,from,size.height),verticalPageInset(note.pages,zoom,v.clientHeight));
         }
       }
       liveZoom.current=zoom;committedZoom.current=null;
@@ -354,6 +409,7 @@ export function ContinuousNotebook(props: Props) {
     const v=viewport.current;
     if(!v||props.settingsOpen||previousDirection.current===props.direction)return;
     previousDirection.current=props.direction;
+    resetPull();
     motion.current?.stop();
     const saved=viewPosition.current;
     if(saved){
@@ -374,7 +430,18 @@ export function ContinuousNotebook(props: Props) {
   },[]);
   useEffect(()=>{
     const v=viewport.current;if(!v)return;
-    const observer=new ResizeObserver(()=>{viewportSize.current={width:v.clientWidth,height:v.clientHeight};});
+    const observer=new ResizeObserver(()=>{
+      if(!v.clientWidth||!v.clientHeight)return;
+      const old=viewportSize.current,saved=viewPosition.current;
+      measureViewport(v);
+      if(latest.current.direction==="horizontal"&&old.width&&old.width!==v.clientWidth&&saved&&!pinchAnchor.current){
+        motion.current?.stop();
+        const restored=restoreNoteView(latest.current.note.pages,saved,v.clientWidth,"horizontal",v.clientHeight);
+        v.scrollLeft=restored.left;v.scrollTop=restored.top;
+      }
+      viewportSize.current={width:v.clientWidth,height:v.clientHeight};
+      scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};rememberPosition();
+    });
     observer.observe(v);return()=>observer.disconnect();
   },[]);
   useEffect(() => {
@@ -407,8 +474,8 @@ export function ContinuousNotebook(props: Props) {
       );
       if (page) {
         const rect=page.getBoundingClientRect(),area=v.getBoundingClientRect();
-        const left=horizontal?v.scrollLeft+rect.left-area.left-PAGE_START:v.scrollLeft;
-        const top=horizontal?v.scrollTop:v.scrollTop+rect.top-area.top-PAGE_START;
+        const left=horizontal?v.scrollLeft+rect.left-area.left:v.scrollLeft;
+        const top=horizontal?v.scrollTop:v.scrollTop+rect.top-area.top-verticalPageInset(note.pages,liveZoom.current,v.clientHeight);
         if (motion.current) motion.current.easeTo(left,top);
         else {v.scrollLeft=left;v.scrollTop=top;}
         scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
@@ -416,10 +483,35 @@ export function ContinuousNotebook(props: Props) {
     });
     return () => cancelAnimationFrame(id);
   }, [props.jump.token, note.id]);
+  useLayoutEffect(()=>{
+    const last=note.pages.at(-1)?.id;
+    const before=previousPages.current!;previousPages.current=notePageIds(note);
+    if(last&&note.pages.length>before.size&&!before.has(last)){
+      const handoff=pullHandoff.current,v=viewport.current;
+      if(handoff&&v){
+        resetPull();
+        const old=[...v.querySelectorAll<HTMLElement>("[data-page-id]")].find(p=>p.dataset.pageId===handoff.id);
+        if(old){
+          const rect=old.getBoundingClientRect(),area=v.getBoundingClientRect();
+          if(horizontal)v.scrollLeft=pagePullHandoff(v.scrollLeft,handoff.left,rect.left-area.left);
+          else v.scrollTop=pagePullHandoff(v.scrollTop,handoff.top,rect.top-area.top);
+        }
+        swipeArrival.current=last;pullHandoff.current=null;
+        scrollPosition.current={left:v.scrollLeft,top:v.scrollTop};
+      }
+      setAddedPage(last);
+    }
+  },[layoutKey]);
+  useEffect(()=>{
+    if(!addedPage)return;
+    const timer=setTimeout(()=>setAddedPage(undefined),1100);
+    return()=>clearTimeout(timer);
+  },[addedPage]);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
       cancelAnimationFrame(zoomFrame.current);
+      clearTimeout(pullTimer.current);
       previewWork.setWriting(false);props.onWriting(false);
     },
     [],
@@ -432,7 +524,7 @@ export function ContinuousNotebook(props: Props) {
       touches.current.clear();
       pageSwipe.current=null;
       gesture.current = null;
-      setPull(0);
+      resetPull();
     } else drawing.current.delete(id);
     previewWork.setWriting(drawing.current.size>0);
     latest.current.onWriting(drawing.current.size > 0);
@@ -449,8 +541,9 @@ export function ContinuousNotebook(props: Props) {
       const v = viewport.current;
       if (!v?.clientWidth || drawing.current.size || pinchAnchor.current) return;
       const across=latest.current.direction==="horizontal",area=v.getBoundingClientRect();
+      if(across&&viewportSize.current.width!==v.clientWidth)return;
       const edge=across?area.left:area.top;
-      const probe=edge+(across?PAGE_START+2:Math.min(v.clientHeight*0.3,150));
+      const probe=edge+(across?v.clientWidth/2:Math.min(v.clientHeight*0.3,150));
       const pages=[...v.querySelectorAll<HTMLElement>("[data-page-id]")];
       const active=pages.find(e=>e.getBoundingClientRect()[across?"right":"bottom"]>probe)||pages.at(-1);
       if (active?.dataset.pageId) onActive(active.dataset.pageId);
@@ -461,6 +554,7 @@ export function ContinuousNotebook(props: Props) {
     if (e.pointerType !== "touch" && props.tool !== "hand" && e.button !== 1)
       return;
     motion.current?.stop();
+    if(pullVisualRef.current?.returning)resetPull();
     flushZoom();
     velocity.current = { x: 0, y: 0, time: e.timeStamp };
     e.preventDefault();
@@ -470,16 +564,17 @@ export function ContinuousNotebook(props: Props) {
       pageSwipe.current=null;
       swipe.current.multi = true;
       swipe.current.distance = 0;
-      setPull(0);
+      swipe.current.vertical=null;
+      resetPull();
     } else {
-      swipe.current={distance:0,multi:e.pointerType!=="touch"};
-      if(horizontal&&e.pointerType==="touch"){
+      const pageGesture=e.pointerType==="touch"||(e.pointerType==="mouse"&&props.tool==="hand"&&e.button===0);
+      swipe.current={distance:0,multi:!pageGesture,vertical:null};
+      if(horizontal&&pageGesture){
         const v=e.currentTarget,edge=v.getBoundingClientRect().left,left=v.scrollLeft;
         const starts=[...v.querySelectorAll<HTMLElement>("[data-page-id]")]
-          .map(slot=>left+slot.getBoundingClientRect().left-edge-PAGE_START);
-        const next=starts.findIndex(start=>start>left+2);
-        const index=next<0?starts.length-1:Math.max(0,next-1);
-        if(starts.length)pageSwipe.current={x:e.clientX,y:e.clientY,left,index,starts,deltaX:0};
+          .map(slot=>left+slot.getBoundingClientRect().left-edge);
+        const index=horizontalPageIndex(starts,left+v.clientWidth/2);
+        if(starts.length)pageSwipe.current={x:e.clientX,y:e.clientY,left,index,starts,max:Math.max(0,v.scrollWidth-v.clientWidth),deltaX:0};
       }
     }
     rebaseGesture();
@@ -514,9 +609,9 @@ export function ContinuousNotebook(props: Props) {
       if(!paged.axis)return;
       if(paged.axis==="horizontal"){
         const {starts,index,left,deltaX}=paged;
-        const first=starts[Math.max(0,index-1)],last=starts[Math.min(starts.length-1,index+1)];
+        const first=starts[Math.max(0,index-1)],last=index===starts.length-1?paged.max:starts[index+1];
         v.scrollLeft=Math.min(Math.max(left,last),Math.max(Math.min(left,first),left-deltaX));
-        swipe.current.distance=index===starts.length-1?Math.max(0,-deltaX):0;
+        swipe.current.distance=index===starts.length-1?Math.max(0,left-deltaX-last):0;
         setPull(swipe.current.distance);
         rememberPosition();
         gesture.current=current;
@@ -525,11 +620,12 @@ export function ContinuousNotebook(props: Props) {
     }
     if (prev) {
       const dx=paged?0:x-prev.x,dy=y-prev.y;
-      const advance=horizontal?dx:dy,cross=horizontal?dy:dx;
-      const max=Math.max(0,horizontal?v.scrollWidth-v.clientWidth:v.scrollHeight-v.clientHeight);
-      const before=horizontal?v.scrollLeft:v.scrollTop;
       v.scrollLeft -= dx;
-      v.scrollTop -= dy;
+      if(!horizontal&&points.length===1&&!swipe.current.multi){
+        const next=advanceVerticalPagePull(swipe.current.vertical,prev.y,y,v.scrollTop,v.scrollHeight-v.clientHeight);
+        swipe.current.vertical=next.anchor;swipe.current.distance=next.distance;
+        v.scrollTop=next.scrollTop;setPull(next.distance);
+      }else v.scrollTop-=dy;
       rememberPosition();
       const dt = Math.max(1, e.timeStamp - velocity.current.time);
       velocity.current = {
@@ -537,19 +633,11 @@ export function ContinuousNotebook(props: Props) {
         y: velocity.current.y * 0.4 + (-dy / dt) * 0.6,
         time: e.timeStamp,
       };
-      if (!horizontal && points.length === 1 && !swipe.current.multi) {
-        const offset=horizontal?v.scrollLeft:v.scrollTop;
-        if (advance<0&&offset>=max-3)
-          swipe.current.distance+=Math.max(0,-advance-(max-before));
-        else if(advance>0)
-          swipe.current.distance=Math.max(0,swipe.current.distance-advance);
-        if(Math.abs(cross)>Math.abs(advance)*2)swipe.current.distance=0;
-        setPull(swipe.current.distance);
-      }
     }
     gesture.current = current;
   }
   function end(e: RPointerEvent<HTMLDivElement>) {
+    if(isForeignPointerCaptureLoss(e.type,e.target,e.currentTarget,e.currentTarget.hasPointerCapture(e.pointerId)))return;
     if (!touches.current.has(e.pointerId)) return;
     flushZoom();
     const v=viewport.current!;
@@ -558,7 +646,7 @@ export function ContinuousNotebook(props: Props) {
     const cancelled=e.type!=="pointerup";
     const add = shouldAddPage(
         true,
-        horizontal ? !!paged&&paged.index===paged.starts.length-1 : v.scrollTop+v.clientHeight>=v.scrollHeight-3,
+        horizontal ? !!paged&&paged.index===paged.starts.length-1 : !!swipe.current.vertical,
         swipe.current.distance,
         cancelled,
         swipe.current.multi,
@@ -567,11 +655,14 @@ export function ContinuousNotebook(props: Props) {
     if(touches.current.size<2)finishZoom();
     rebaseGesture();
     swipe.current.distance = 0;
-    setPull(0);
     if (add) {
       touches.current.clear();
+      const slot=v.querySelector<HTMLElement>(".continuous-page:last-child");
+      if(slot){const rect=slot.getBoundingClientRect(),area=v.getBoundingClientRect();pullHandoff.current={id:slot.dataset.pageId!,left:rect.left-area.left,top:rect.top-area.top};}
       props.onAddPage();
-    } else if(paged?.axis==="horizontal"){
+    } else {
+      setPull(0);
+      if(paged?.axis==="horizontal"){
       const target=cancelled?paged.left:paged.starts[pageAfterSwipe(paged.index,paged.deltaX,paged.starts.length)];
       if(motion.current)motion.current.easeTo(target,v.scrollTop);
       else v.scrollLeft=target;
@@ -582,15 +673,18 @@ export function ContinuousNotebook(props: Props) {
       e.timeStamp - velocity.current.time < 90
     ) {
       motion.current?.fling(velocity.current.x, velocity.current.y);
+      }
     }
   }
   return (
+    <>
     <div
       className={
         "viewport continuous-viewport " + (horizontal?"horizontal ":"") +
         (props.tool === "hand" ? "panning" : "")
       }
       ref={viewport}
+      style={{"--page-gap":`${PAGE_GAP}px`} as CSSProperties}
       onScroll={scroll}
       onPointerDownCapture={() => motion.current?.stop()}
       onPointerDown={down}
@@ -600,13 +694,14 @@ export function ContinuousNotebook(props: Props) {
       onLostPointerCapture={end}
     >
       <div
+        ref={stack}
         className="continuous-stack"
         style={horizontal?{
-          height:`calc(${maxPageHeight}px * var(--notebook-zoom, ${zoom}) + 120px)`,
-          "--last-page-width":`calc(${note.pages.at(-1)?.width??0}px * var(--notebook-zoom, ${zoom}))`,
+          height:`calc(${maxPageHeight}px * var(--notebook-zoom, ${zoom}) + 24px)`,
         } as CSSProperties:{
-          width: `calc(${maxPageWidth}px * var(--notebook-zoom, ${zoom}) + 96px)`,
-        }}
+          width: `calc(${maxPageWidth}px * var(--notebook-zoom, ${zoom}))`,
+          "--pages-height":`calc(${pagesHeight.height}px * var(--notebook-zoom, ${zoom}) + ${pagesHeight.spacing}px)`,
+        } as CSSProperties}
       >
         {note.pages.map((page, index) => (
           <PageSlot
@@ -614,6 +709,7 @@ export function ContinuousNotebook(props: Props) {
             page={page}
             index={index}
             isActive={props.activePageId===page.id}
+            isNew={addedPage===page.id&&swipeArrival.current!==page.id}
             root={viewport}
             document={document}
             props={pageSettings}
@@ -623,18 +719,23 @@ export function ContinuousNotebook(props: Props) {
           />
         ))}
       </div>
-      {pull > 0 && (
-        <div
-          className={"pull-indicator " + (pull >= 90 ? "armed" : "")}
-          role="status"
-        >
-          {pull >= 90
-            ? "離して新しいページを追加"
-            : `さらに${horizontal?"左":"上"}へスワイプしてページを追加`}
-          <progress max={90} value={Math.min(90, pull)} />
-        </div>
-      )}
-      {createPortal(<canvas ref={ghost} className="selection-drag-ghost" aria-hidden="true"/>,window.document.body)}
     </div>
+    {pullVisual&&<VStack className="page-pull-layer" aria-hidden="true">
+      <VStack className={"page-pull-paper "+(pullVisual.returning?"returning":"")+(pull>=90?" armed":"")} style={{left:pullVisual.geometry.left,top:pullVisual.geometry.top,width:pullVisual.geometry.width,height:pullVisual.geometry.height,transform:`translate3d(${horizontal?-pullVisual.offset:0}px,${horizontal?0:-pullVisual.offset}px,0)`}}>
+        <PagePreview page={pullVisual.page} dark={props.dark} number={note.pages.length+1}/>
+        <VStack className="page-pull-caption" hAlign="center" gap={2}>
+          {pull>=90?<Check size={28}/>:horizontal?<ArrowLeft size={28}/>:<ArrowUp size={28}/>}
+          <Text weight="semibold">{pull>=90?"離して追加":"新しいページ"}</Text>
+        </VStack>
+      </VStack>
+    </VStack>}
+    {(pull>0||addedPage)&&<section className={"pull-indicator "+(horizontal?"pull-horizontal ":"")+(addedPage?"added":pull>=90?"armed":"")} role="status" aria-live="polite">
+      <HStack gap={3} vAlign="center">
+          <Text size="sm" weight="semibold">{addedPage?"ページを追加しました":pull>=90?"離して新しいページを追加":`さらに${horizontal?"左":"上"}へスワイプ`}</Text>
+        {!addedPage&&(pull>=90?<Check className="pull-ready-icon" size={20}/>:horizontal?<ArrowLeft size={20}/>:<ArrowUp size={20}/>)}
+      </HStack>
+    </section>}
+    {createPortal(<canvas ref={ghost} className="selection-drag-ghost" aria-hidden="true"/>,window.document.body)}
+    </>
   );
 }

@@ -42,13 +42,32 @@ it("restores the exact horizontal position and opens the same page after switchi
   expect(restoreNoteView(pages,view,900,"horizontal",600)).toEqual({pageId:"b",left,top});
   expect(restoreNoteView(pages,view,900)).toEqual({pageId:"b",left:0,top:16+24+1123*zoom+34});
   const vertical=captureNoteView(pages,zoom,0,1800,900)!;
-  expect(restoreNoteView(pages,vertical,900,"horizontal",600)).toEqual({pageId:"b",left:left-200,top:0});
+  expect(restoreNoteView(pages,vertical,900,"horizontal",600)).toEqual({pageId:"b",left:left-216,top:0});
 });
 
 it("keeps the target page when the scroll position includes the leading gutter",()=>{
-  const left=794+34;
+  const left=900+34;
   const view=captureNoteView(pages,1,left,0,900,"horizontal",600)!;
   expect(view.pageId).toBe("b");
   expect(restoreNoteView(pages,view,900,"horizontal",600).left).toBe(left);
   expect(restoreNoteView(pages,view,900)).toEqual({pageId:"b",left:0,top:16+24+1123+34});
+});
+
+
+it("restores the same fitting horizontal page after resizing or reopening without exposing its neighbours",()=>{
+  const zoom=.25,left=934;
+  const view=captureNoteView(pages,zoom,left,0,900,"horizontal",600)!;
+  expect(view.pageId).toBe("b");
+  expect(restoreNoteView(pages,view,900,"horizontal",600).left).toBe(934);
+  expect(restoreNoteView(pages,view,430,"horizontal",600).left).toBe(464);
+});
+it("round-trips a fitting vertical page when its optional gutters shrink",()=>{
+  const single=[pages[0]],zoom=.5,view=captureNoteView(single,zoom,0,0,900,"vertical",600)!;
+  expect(restoreNoteView(single,view,900,"vertical",600)).toEqual({pageId:"a",left:0,top:0});
+});
+
+it("keeps the destination page when a resize interrupts the last pixels of a page turn",()=>{
+  const view=captureNoteView(pages,.25,920,0,900,"horizontal",600)!;
+  expect(view.pageId).toBe("b");
+  expect(restoreNoteView(pages,view,430,"horizontal",600).left).toBe(464);
 });

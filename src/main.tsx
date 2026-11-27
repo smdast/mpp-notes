@@ -1,3 +1,4 @@
+import {Text} from "@astryxdesign/core/Text";
 import {ToastViewport} from "@astryxdesign/core/Toast";
 import {Toolbar} from "@astryxdesign/core/Toolbar";
 import {ErrorBanner} from "./ErrorBanner";
@@ -28,6 +29,7 @@ import type { SyncState, LibrarySnapshot } from "./drive/sync";
 import { createRoot } from "react-dom/client";
 import { useEffect, useRef, useState } from "react";
 import {
+  House,
   BookOpen,
   Cloud,
   FolderSync,
@@ -40,7 +42,6 @@ import {
   PenLine,
   ChevronDown,
   ChevronLeft,
-  ChevronRight,
   MoreHorizontal,
   Check,
   ShieldCheck,
@@ -677,21 +678,22 @@ function App() {
         ) : (
           <>
             <Toolbar className="topbar note-header-toolbar" label="ノートの操作バー" size="md" gap={3} dividers={["bottom"]} startContent={
-              <HStack className="breadcrumb" vAlign="center" gap={2}>
+              <HStack className="note-heading-actions" vAlign="center" gap={2}>
                 <ActionButton
                   className="library-back"
                   aria-label="ライブラリへ戻る"
                   title="ライブラリへ戻る"
                   onClick={library}
                 >
-                  <img src="./icon.svg" width="22" height="22" alt=""/>
-                  <span>ライブラリ</span>
+                  <House size={20}/>
                 </ActionButton>
-                <span className="breadcrumb-library">
-                  <Breadcrumb folder={note?.folder} />
-                  <ChevronRight className="path-separator" size={13} aria-hidden="true"/>
-                </span>
-                <strong>{note?.title || "ノートをはじめよう"}</strong>
+                <ActionButton className="icon-button note-sidebar-toggle" aria-label={preferences.pagesCollapsed?"ページ一覧を開く":"ページ一覧をたたむ"} title={preferences.pagesCollapsed?"ページ一覧を開く":"ページ一覧をたたむ"} aria-expanded={!preferences.pagesCollapsed} aria-controls="page-preview-list" disabled={!note} onClick={()=>storePreferences({...preferencesRef.current,pagesCollapsed:!preferencesRef.current.pagesCollapsed})}>
+                  {preferences.pagesCollapsed?<PanelLeftOpen size={19}/>:<PanelLeftClose size={19}/>}
+                </ActionButton>
+                <VStack className="note-heading" gap={0.5}>
+                  <Breadcrumb folder={note?.folder}/>
+                  <Text as="h1" size="lg" weight="semibold" maxLines={1}>{note?.title||"ノートをはじめよう"}</Text>
+                </VStack>
                 {note && (
                   <div className="menu-wrap" ref={noteMenu}>
                     <ActionButton
@@ -745,7 +747,7 @@ function App() {
             {error&&<ErrorBanner message={error} onDismiss={()=>setError("")} onRetry={failed.current?retrySave:undefined}/>}
             {ready && page && note ? (
               <div className="workspace">
-                <PageSidebar shortcuts={preferences.shortcuts} key={note.id} pdf={note.pdf} collapsed={preferences.pagesCollapsed} onCollapse={pagesCollapsed=>storePreferences({...preferencesRef.current,pagesCollapsed})} pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
+                <PageSidebar shortcuts={preferences.shortcuts} key={note.id} pdf={note.pdf} collapsed={preferences.pagesCollapsed} pages={note.pages} active={page.id} dark={dark} onSelect={goPage} onAdd={addPage}
                   onInsert={(id,after)=>{const result=insertedPage(note.pages,id,after,dark);if(result){updateNote({...note,pages:result.pages});goPage(result.page.id);}}}
                   onDuplicate={(id)=>{const source=note.pages.find(p=>p.id===id);if(!source)return;const copy=duplicatePage(source),index=note.pages.indexOf(source)+1;updateNote({...note,pages:[...note.pages.slice(0,index),copy,...note.pages.slice(index)]});goPage(copy.id);}}
                   onDelete={(id)=>setDialog({kind:"deletePage",pageId:id})}

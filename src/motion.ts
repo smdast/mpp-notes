@@ -43,7 +43,8 @@ export class ScrollMotion {
   private wheel = (event: WheelEvent) => {
     const remap=this.direction()==="horizontal"&&event.deltaX===0&&event.deltaY!==0&&!event.shiftKey;
     const precise=event.deltaMode===0&&Math.abs(event.deltaY)<40&&Math.abs(event.deltaX)<40;
-    if(event.ctrlKey||event.metaKey||(!remap&&(this.reduced()||precise))){
+    const horizontal=this.direction()==="horizontal";
+    if(event.ctrlKey||event.metaKey||(!horizontal&&(this.reduced()||precise))){
       this.stop();
       return;
     }
@@ -57,9 +58,10 @@ export class ScrollMotion {
     const active = this.frame && this.kind === "ease";
     const x = active ? this.targetX : this.element.scrollLeft,
       y = active ? this.targetY : this.element.scrollTop;
-    if(remap&&precise){
+    if(horizontal&&precise){
       this.stop();
-      this.element.scrollLeft+=event.deltaY;
+      this.element.scrollLeft+=remap?event.deltaY:event.deltaX;
+      this.element.scrollTop+=remap?0:event.deltaY;
       return;
     }
     this.easeTo(x + (remap?event.deltaY:event.deltaX) * factor, y + (remap?0:event.deltaY) * factor);
